@@ -48,3 +48,6 @@ next-env.d.ts
 # supabase local
 supabase/.branches
 supabase/.temp
+
+# third-party agent skills (not part of the project scaffold)
+.agents/
