@@ -70,10 +70,10 @@ npx supabase db push
 After every migration, regenerate the TypeScript types:
 
 ```bash
-npx supabase gen types typescript --local > src/lib/supabase/types.ts
+npx supabase gen types typescript --local > src/lib/database.types.ts
 ```
 
-Commit the migration file **and** the regenerated `types.ts` together.
+Commit the migration file **and** the regenerated `database.types.ts` together.
 
 ### 5. Run the development server
 
@@ -97,7 +97,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npx supabase stop` | Stop local Supabase stack |
 | `npx supabase migration new <name>` | Create a new migration file |
 | `npx supabase db push` | Apply pending migrations locally |
-| `npx supabase gen types typescript --local > src/lib/supabase/types.ts` | Regenerate database types |
+| `npx supabase gen types typescript --local > src/lib/database.types.ts` | Regenerate database types |
 
 ---
 
@@ -125,7 +125,7 @@ src/
       client.ts           # Browser client (anon key, safe for Client Components)
       server.ts           # Server client (cookie session, Server Components)
       service.ts          # Service role client (server-only, bypasses RLS)
-      types.ts            # Generated database types (run `supabase gen types`)
+    database.types.ts     # Generated database types (run `supabase gen types`)
     paystack/             # Paystack server-only utilities
     analytics/
       events.ts           # PostHog event name registry (PRD §3.5)
@@ -144,5 +144,5 @@ docs/
 
 1. Run `npm run typecheck` and `npm run lint` before opening a PR — both must pass with zero errors.
 2. Every schema change must go through `supabase migration new`. No dashboard edits.
-3. After every migration, regenerate and commit `src/lib/supabase/types.ts`.
+3. After every migration, regenerate and commit `src/lib/database.types.ts`.
 4. No `any` types. No non-null assertions (`!`) without an inline comment justifying them.

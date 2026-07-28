@@ -12,7 +12,7 @@
 import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
-// TODO: import type { Database } from "./types"; // uncomment after first `supabase gen types typescript`
+import type { Database } from "@/lib/database.types";
 
 /**
  * Returns a Supabase client authenticated as the service role.
@@ -29,7 +29,7 @@ export function createServiceClient() {
     );
   }
 
-  return createClient(url, key, {
+  return createClient<Database>(url, key, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

@@ -6,21 +6,23 @@
  */
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
-// TODO: import type { Database } from "./types"; // uncomment after first `supabase gen types typescript`
+import type { Database } from "@/lib/database.types";
 
 export async function createClient() {
   const cookieStore = await cookies();
-  return createServerClient(
-    process.env["NEXT_PUBLIC_SUPABASE_URL"]!,    // non-null: required at boot
+  return createServerClient<Database>(
+    process.env["NEXT_PUBLIC_SUPABASE_URL"]!, // non-null: required at boot
     process.env["NEXT_PUBLIC_SUPABASE_ANON_KEY"]!, // non-null: required at boot
     {
       cookies: {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(
-          cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>
-        ) {
+        // `headers` (cache-control hints for CDNs/reverse proxies) is only
+        // actionable where a response object exists — i.e. middleware. It's
+        // unused here: Server Components/Actions have no response to attach
+        // headers to.
+        setAll(cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
