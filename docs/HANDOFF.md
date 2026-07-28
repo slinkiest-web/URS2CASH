@@ -213,3 +213,56 @@ type CreateListingInput = {
 ```
 
 See `docs/DECISIONS.md` #30–#34 for this prompt's design choices.
+
+---
+
+## Prompt 8 — Listing management and the "list another" growth flow
+
+**Note on conflict resolution:** one material conflict, resolved via AskUserQuestion (quoting both HARD RULEs), before writing code. §5.4 requires draft creation to be real and never capped ("AC0 fails if the limit blocks draft creation rather than publish"); §6.1 requires every JSONB write to be fully Zod-validated, no exceptions. The task's draft-save instruction didn't say whether a draft needs the same validation strictness as a publish. Asked; answer was "drafts require full validation too" — see `docs/DECISIONS.md` #35. One low-stakes citation-style correction, not blocking: the task's "pre-fills brand" undersold PRD Epic B2 AC3, which also prefills `condition`; followed the AC's literal text (`docs/DECISIONS.md` #36).
+
+**Completed:**
+- `src/lib/listings/validate-submission.ts`: `validateListingSubmission()` — the single shared entry point for full listing validation (listing-level schema + category attribute resolver), used identically by both `createListing` and `updateListing` regardless of draft/publish. No code path persists a partially-valid row.
+- `src/lib/listings/check-limit-gate.ts`: `checkListingLimitGate()` — the §5.4 cap check, extracted from `createListing`'s inline logic (Prompt 7) so `updateListing`'s draft→publish transition goes through the exact same gate.
+- `src/lib/listings/has-blocking-order.ts`: `hasBlockingOrder()` — Epic B4 AC5 ("a listing with an order in any status other than `cancelled` or `expired` cannot be removed or edited"), shared by `updateListing` and `removeListing`.
+- `src/lib/actions/listings.ts`: `createListing` refactored onto the three shared helpers above and given `saveAsDraft` support (`status: 'draft'`, cap check skipped). Two new actions:
+  - `updateListing(input: UpdateListingInput): Promise<Result<void>>` — rejects the update outright (`immutable_field`) if `priceKobo`, `condition`, or `categorySlug` is present at all on a `published` listing, regardless of whether the value actually changed. Every other field falls back to the listing's current value and is re-validated in full through `validateListingSubmission`. `publish: true` on a `draft` row runs the limit gate and flips `status` to `published`, firing `listing_published` with `time_to_publish_seconds` measured from `created_at` (no client-supplied `draftStartedAt` survives a resumed-later draft).
+  - `removeListing(listingId): Promise<Result<void>>` — sets `status = 'removed'`; blocked by `hasBlockingOrder`. Does not itself restrict which prior status is eligible (see `docs/DECISIONS.md` #38) — that restriction lives in the dashboard UI.
+- `src/app/(seller)/sell/page.tsx`: now handles three entry states — fresh create (AC6: defaults the category select to the seller's most recently used category, via a plain query, no embedded-select), resume a draft via `?listing=<id>`, and edit a published listing via the same param.
+- `src/app/(seller)/sell/listing-form.tsx`: `ExistingListing` type + `existingListing`/`defaultCategorySlug` props. Read-only price/condition/category inputs with "remove and relist" copy once `existingListing.status === 'published'`. Dual submit intent ("Save as draft" vs "Publish") via two `<button type="submit" value="…">` elements, read from `(e.nativeEvent as SubmitEvent).submitter` — preserves native HTML5 validation for both paths, since drafts need the same strictness as publish (#35). localStorage autosave (`urs2cash:sell-draft`, 500ms debounced, excludes photos since `File` isn't serializable), restored post-mount only when not editing/resuming a server-persisted listing. "List another": resets everything except `categorySlug`/`condition`/`attributeValues.brand`, fires `list_another_clicked` with `from_listing_id`.
+- `src/app/(seller)/dashboard/listings/page.tsx` + `remove-listing-button.tsx`: seller's own listings grouped into Drafts/Published/Sold/Removed sections (status values fixed by the migration's CHECK constraint), each with Resume/Edit + Remove actions (draft/published only — see `docs/DECISIONS.md` #38). View count omitted — no such column exists (`docs/KNOWN_ISSUES.md` #22).
+- Satisfied Next 16's React Compiler lint rules (`react-hooks` v6, bundled in `eslint-config-next`) without weakening the hydration-safety design: lazy `useState` initializers instead of calling `Date.now()` directly during render, a scoped `eslint-disable`/`eslint-enable` around the one-time localStorage-restore effect's `setState` calls (justified inline — see `docs/DECISIONS.md` #39), and `useRouter().push()` instead of `window.location.href` after a draft save.
+
+**Verified:**
+- `npx tsc --noEmit`, `npx eslint "src/**/*.{ts,tsx}"`, `npx vitest run` (70/70, unchanged from Prompt 7 — this prompt added no new pure-function modules worth unit-testing beyond what schema/limits already cover), and `npm run build` all pass clean. `/dashboard/listings` registered as a route.
+- Manually traced every VERIFICATION scenario from the task: `updateListing` rejects a price change on a `published` listing (`immutable_field`, checked before any DB write) but accepts a description-only change (falls through to `validateListingSubmission` and updates); the localStorage-restore effect runs once post-mount, guarded off entirely while `existingListing` is set, so resuming a killed tab restores unsaved create-flow state without touching a real resume/edit session; `handleListAnother` carries `categorySlug`/`condition`/`brand` forward and clears everything else, matching AC3's literal text exactly.
+
+**Not verified (Docker still unavailable):** no new migration this prompt — confirmed no schema change was needed (`listings.status` already allows `'draft'` since Prompt 4, all touched columns already exist) — so this prompt adds no new items to the "migration never run" family of gaps.
+
+**Known gaps, flagged rather than silently accepted:**
+- No `view_count` column exists anywhere in the schema; Epic B4 AC1 asks the dashboard to show it. Displayed status/category/price/age only. See `docs/KNOWN_ISSUES.md` #22.
+- The §5.4 TOCTOU race (`docs/KNOWN_ISSUES.md` #19) now has a second call site (`updateListing`'s publish path) via the shared `checkListingLimitGate` helper — same open issue, doubled motivation to fix it once, centrally. See `docs/KNOWN_ISSUES.md` #23.
+- `/dashboard/listings` has no inbound link from anywhere but the post-publish success screen — there's no global nav yet to add one to. See `docs/KNOWN_ISSUES.md` #24.
+
+**Next prompt should build:** contact-detail detection as flag-not-block (§9.3), wired into the listing creation and rating submission paths — the `scanForContactDetails` stub in `src/lib/moderation/contact-detector.ts` has a single documented TODO call site in `createListing` waiting for this.
+
+`updateListing`/`removeListing` signatures:
+```ts
+function updateListing(input: UpdateListingInput): Promise<Result<void>>
+function removeListing(listingId: string): Promise<Result<void>>
+
+type UpdateListingInput = {
+  listingId: string;
+  title?: string;
+  description?: string;
+  priceKobo?: number;      // rejected server-side if already published
+  condition?: string;      // rejected server-side if already published
+  categorySlug?: string;   // rejected server-side if already published
+  conditionNotes?: string;
+  attributes?: Record<string, unknown>;
+  photoUrls?: string[];
+  flawPhotoIndexes?: number[];
+  publish?: boolean;       // attempt draft -> published; ignored if already published
+};
+```
+
+See `docs/DECISIONS.md` #35–#39 for this prompt's design choices.

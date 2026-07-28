@@ -447,3 +447,92 @@ validates the shared fields (with a per-category dynamic photo-count
 bound), the resolver validates category attributes + `condition`
 membership — exactly one place decides each kind of rule, never two.
 **Revisit:** No.
+
+## From Prompt 8
+
+### 35. Server-side drafts require the same full validation as a publish — only the cap check and `status` differ
+**Why:** the task collided two HARD RULES. §5.4: "AC0 fails if the limit
+blocks draft creation rather than publish" — draft creation must be real
+and uncapped. §6.1: "JSONB is never written without Zod validation. There
+are no exceptions." A draft that skipped listing-level or attribute
+validation would satisfy the first and violate the second. Asked the user
+via AskUserQuestion, quoting both HARD RULEs; the answer was "drafts
+require full validation too." `src/lib/listings/validate-submission.ts`
+now has exactly one entry point (`validateListingSubmission`), called
+identically by `createListing` and `updateListing` regardless of
+`status`. The only differences between a draft save and a publish are:
+(1) `checkListingLimitGate` is skipped entirely for a draft save/update,
+and (2) the row's `status` value. There is no code path that persists a
+partially-valid `listings` row.
+**Revisit:** No — this is now the intended, permanent shape.
+
+### 36. "List another" prefill includes `condition`, not just category and brand
+**Why:** the task's own prose said "pre-fills brand from the seller's most
+recent listing in that category," but PRD Epic B2 AC3 is explicit: "a
+fresh form with category, brand, and condition prefilled from the just
+published listing. All other fields empty. AC3 fails if the description
+or photos carry over." Condition is enumerated by name in the AC; the
+task's summary just compressed it out. Followed the AC's literal text —
+low-stakes citation-style correction, not blocking. `handleListAnother` in
+`listing-form.tsx` carries over `categorySlug`, `condition`, and
+`attributeValues["brand"]` from current state; everything else — title,
+description, price, condition_notes, photos, flaw indexes, every other
+attribute — resets to empty.
+**Revisit:** No.
+
+### 37. AC6's "most recently used category" default is a separate mechanism from AC3's "list another" prefill, not the same feature
+**Why:** the task's phrasing ("pre-selects the same category and pre-fills
+brand from the seller's most recent listing in that category") reads as
+one feature, but the PRD describes two: AC3 fires only right after a
+publish, client-side, no DB query, carrying category+brand+condition from
+the listing that was just published. AC6 fires on any fresh, unparameterized
+`/sell` visit (no `?listing=`, no just-published state), server-side,
+querying the seller's most recent listing by `created_at` for its category
+only — no brand, no condition. Building one field (say, deriving AC6 from
+AC3's client state) would silently violate the other's trigger condition.
+Implemented both, literally: `page.tsx` does the AC6 query and passes
+`defaultCategorySlug`; `listing-form.tsx`'s `handleListAnother` does the
+AC3 carry-over entirely from in-memory state, no query.
+**Revisit:** No.
+
+### 38. `removeListing` doesn't check the listing's current `status` before setting it to `removed`
+**Why:** PRD Epic B4 AC4/AC5 only require (a) it sets `status = 'removed'`
+and (b) it's blocked while a non-`cancelled`/non-`expired` order exists —
+neither AC restricts which prior status is eligible. Adding a
+`status IN ('draft','published')` guard server-side would be an
+unrequested restriction with no PRD backing, and `removed`/`sold` are
+already excluded from every buyer-facing surface regardless (the existing
+`listings_select_published` RLS policy only serves `published` rows
+publicly), so re-removing an already-removed or already-sold listing is
+inert, not harmful. The restriction lives in the UI instead:
+`dashboard/listings/page.tsx` only renders the Remove button for `draft`
+and `published` rows, since those are the only states where removing is a
+meaningful seller action.
+**Revisit:** No.
+
+### 39. `useState(() => ...)` lazy initializers and a scoped `eslint-disable` for `react-hooks/set-state-in-effect`, not `useSyncExternalStore`, to satisfy Next 16's React Compiler lint rules
+**Why:** Next.js 16's `eslint-config-next` bundles the React Compiler's
+`react-hooks` v6 rule set, which is stricter than plain
+`exhaustive-deps`. Two rules fired in `listing-form.tsx`: `purity` (calling
+`Date.now()` directly in a `useState` initializer expression, which runs
+on every render even though only the first result is kept — wrapping it in
+a lazy initializer function fixed it, matching how `crypto.randomUUID()`
+was already written elsewhere in the same file) and `set-state-in-effect`
+(the localStorage-draft-restore effect calling several `setState`s
+synchronously). For the latter, considered `useSyncExternalStore` — the
+React-sanctioned way to read a synchronous external source without an
+effect — but rejected it: it's designed for continuously-mirrored
+read-only state, and every field it would seed here (`title`,
+`condition`, etc.) must remain independently user-editable afterward,
+which `useSyncExternalStore` doesn't support. Restoring state from
+localStorage exactly once, post-hydration, is the textbook case effects
+exist for; used a scoped `eslint-disable`/`eslint-enable` pair around just
+those `setState` calls with a comment explaining why, rather than
+restructuring seven independent controlled fields into one object purely
+to satisfy the linter. Separately, replaced `window.location.href = ...`
+(flagged by the compiler's immutability rule as a write to a
+externally-owned object) with `useRouter().push()` from `next/navigation`
+— strictly better anyway, since it avoids a full page reload after a
+draft save.
+**Revisit:** No, unless a future Next/React-Compiler version changes how
+it wants one-time external-state hydration to be written.

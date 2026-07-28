@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { createListing } from "@/lib/actions/listings";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createListing, updateListing } from "@/lib/actions/listings";
 import { getAttributeFieldDescriptors, type FieldDescriptor } from "@/lib/categories/form-fields";
 import type { CategorySlug } from "@/lib/categories/registry";
 import type { ConditionValue } from "@/lib/categories/shared";
 import { categoryRegistry } from "@/lib/categories/registry";
 import { uploadListingPhoto } from "@/lib/storage/upload-listing-photo";
 import { track } from "@/lib/analytics/events";
-import { nairaToKobo } from "@/lib/money";
+import { nairaToKobo, formatKobo } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 
 export type SellableCategory = {
@@ -21,13 +22,51 @@ export type SellableCategory = {
   usageIndicatorFields: readonly string[];
 };
 
+export type ExistingListing = {
+  id: string;
+  status: string;
+  categorySlug: CategorySlug;
+  title: string;
+  description: string;
+  priceKobo: number;
+  condition: string;
+  conditionNotes: string | null;
+  attributes: Record<string, unknown>;
+  photoUrls: string[];
+  flawPhotoIndexes: number[];
+};
+
 /** PRD §6.2 HARD RULE: verbatim notice for a listable-but-not-browsable category. */
 const FOUNDING_SELLER_NOTICE =
   "This category is opening soon. Your listing goes live immediately and can be found through search and shared by link. The category opens to browsing as more sellers list.";
 
+/** §10 Epic B2 AC1: localStorage draft key, restored on a fresh /sell visit only. */
+const DRAFT_STORAGE_KEY = "urs2cash:sell-draft";
+const AUTOSAVE_DEBOUNCE_MS = 500;
+
+type StoredDraft = {
+  categorySlug: string;
+  condition: string;
+  title: string;
+  description: string;
+  priceNaira: string;
+  conditionNotes: string;
+  attributeValues: Record<string, unknown>;
+};
+
+function readStoredDraft(): StoredDraft | null {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as StoredDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
 type PhotoState = {
   id: string;
-  file: File;
+  /** null for a photo that was already uploaded before this session (edit/resume). */
+  file: File | null;
   previewUrl: string;
   uploadedUrl: string | null;
   uploading: boolean;
@@ -184,24 +223,102 @@ export function ListingForm({
   categories,
   sellerId,
   isFirstListing,
+  existingListing,
+  defaultCategorySlug,
 }: {
   categories: SellableCategory[];
   sellerId: string;
   isFirstListing: boolean;
+  existingListing?: ExistingListing;
+  defaultCategorySlug?: CategorySlug;
 }) {
-  const [categorySlug, setCategorySlug] = useState<CategorySlug | "">("");
-  const [draftStartedAt, setDraftStartedAt] = useState<number | null>(null);
-  const [condition, setCondition] = useState("");
-  const [attributeValues, setAttributeValues] = useState<Record<string, unknown>>({});
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [priceNaira, setPriceNaira] = useState("");
-  const [conditionNotes, setConditionNotes] = useState("");
-  const [photos, setPhotos] = useState<PhotoState[]>([]);
-  const [flawPhotoIndexes, setFlawPhotoIndexes] = useState<number[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const router = useRouter();
+  const isEditing = existingListing !== undefined;
+  const isPublishedEdit = existingListing?.status === "published";
+
+  const [categorySlug, setCategorySlug] = useState<CategorySlug | "">(
+    existingListing?.categorySlug ?? defaultCategorySlug ?? ""
+  );
+  const [draftStartedAt, setDraftStartedAt] = useState<number | null>(() =>
+    existingListing || defaultCategorySlug ? Date.now() : null
+  );
+  const [condition, setCondition] = useState(existingListing?.condition ?? "");
+  const [attributeValues, setAttributeValues] = useState<Record<string, unknown>>(
+    existingListing?.attributes ?? {}
+  );
+  const [title, setTitle] = useState(existingListing?.title ?? "");
+  const [description, setDescription] = useState(existingListing?.description ?? "");
+  const [priceNaira, setPriceNaira] = useState(
+    existingListing ? String(existingListing.priceKobo / 100) : ""
+  );
+  const [conditionNotes, setConditionNotes] = useState(existingListing?.conditionNotes ?? "");
+  const [photos, setPhotos] = useState<PhotoState[]>(() =>
+    (existingListing?.photoUrls ?? []).map((url) => ({
+      id: crypto.randomUUID(),
+      file: null,
+      previewUrl: url,
+      uploadedUrl: url,
+      uploading: false,
+      error: null,
+    }))
+  );
+  const [flawPhotoIndexes, setFlawPhotoIndexes] = useState<number[]>(existingListing?.flawPhotoIndexes ?? []);
+  const [submitting, setSubmitting] = useState<"draft" | "publish" | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [publishedListingId, setPublishedListingId] = useState<string | null>(null);
+  const [restoredFromLocalDraft, setRestoredFromLocalDraft] = useState(false);
+
+  // §10 Epic B2 AC1: restore an in-progress draft from localStorage after a
+  // dropped connection or closed tab — client-only, runs once after mount so
+  // it never disagrees with the server-rendered HTML during hydration. Never
+  // applies while editing/resuming a specific (server-persisted) listing.
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = readStoredDraft();
+    if (!draft || !draft.categorySlug) return;
+    // One-time hydration of controlled field state from a client-only
+    // external source (localStorage) — must happen post-mount to avoid an
+    // SSR hydration mismatch, so it can't be computed during render. Each
+    // field is independently editable afterward, which rules out
+    // useSyncExternalStore (built for continuously-mirrored external state,
+    // not a one-shot seed of otherwise-local state).
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setCategorySlug(draft.categorySlug as CategorySlug);
+    setCondition(draft.condition);
+    setTitle(draft.title);
+    setDescription(draft.description);
+    setPriceNaira(draft.priceNaira);
+    setConditionNotes(draft.conditionNotes);
+    setAttributeValues(draft.attributeValues);
+    setDraftStartedAt(Date.now());
+    setRestoredFromLocalDraft(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
+  }, []);
+
+  // Debounced autosave to localStorage (§10 Epic B2 AC1: 500ms). Photos
+  // (File objects) can't be JSON-serialised and are intentionally excluded —
+  // this covers the "dropped connection while typing" case, not photo state.
+  useEffect(() => {
+    if (isEditing) return;
+    const timeout = setTimeout(() => {
+      if (!categorySlug) {
+        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+        return;
+      }
+      const draft: StoredDraft = {
+        categorySlug,
+        condition,
+        title,
+        description,
+        priceNaira,
+        conditionNotes,
+        attributeValues,
+      };
+      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timeout);
+  }, [isEditing, categorySlug, condition, title, description, priceNaira, conditionNotes, attributeValues]);
 
   const selectedCategory = categories.find((c) => c.slug === categorySlug);
 
@@ -239,7 +356,7 @@ export function ListingForm({
 
     await Promise.all(
       newPhotos.map(async (photo) => {
-        const result = await uploadListingPhoto(photo.file, sellerId);
+        const result = await uploadListingPhoto(photo.file as File, sellerId);
         setPhotos((prev) =>
           prev.map((p) =>
             p.id === photo.id
@@ -258,7 +375,7 @@ export function ListingForm({
       const index = prev.findIndex((p) => p.id === id);
       if (index === -1) return prev;
       const target = prev[index];
-      if (target) URL.revokeObjectURL(target.previewUrl);
+      if (target?.file) URL.revokeObjectURL(target.previewUrl);
       setFlawPhotoIndexes((old) => old.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i)));
       return prev.filter((p) => p.id !== id);
     });
@@ -268,43 +385,123 @@ export function ListingForm({
     setFlawPhotoIndexes((prev) => (prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function clearLocalDraft() {
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!selectedCategory || draftStartedAt === null) return;
 
-    setSubmitting(true);
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const intent: "draft" | "publish" = submitter?.value === "draft" ? "draft" : "publish";
+
+    setSubmitting(intent);
     setSubmitError(null);
 
     const photoUrls = photos.filter((p) => p.uploadedUrl).map((p) => p.uploadedUrl as string);
+    const priceKobo = nairaToKobo(Number(priceNaira) || 0);
+
+    if (isEditing && existingListing) {
+      const result = await updateListing({
+        listingId: existingListing.id,
+        title,
+        description,
+        conditionNotes: conditionNotes || undefined,
+        attributes: attributeValues,
+        photoUrls,
+        flawPhotoIndexes,
+        // §11.2 HARD RULE: price/condition/category must not even be sent
+        // once published — the action rejects the attempt outright if they
+        // are present at all, regardless of whether the value changed.
+        ...(isPublishedEdit ? {} : { priceKobo, condition, categorySlug: selectedCategory.slug }),
+        publish: intent === "publish",
+      });
+
+      setSubmitting(null);
+
+      if (!result.ok) {
+        setSubmitError(result.error.message);
+        return;
+      }
+
+      setPublishedListingId(intent === "publish" ? existingListing.id : null);
+      if (intent === "draft") {
+        setSubmitError(null);
+      }
+      return;
+    }
 
     const result = await createListing({
       categorySlug: selectedCategory.slug,
       title,
       description,
-      priceKobo: nairaToKobo(Number(priceNaira) || 0),
+      priceKobo,
       condition,
       conditionNotes: conditionNotes || undefined,
       attributes: attributeValues,
       photoUrls,
       flawPhotoIndexes,
       draftStartedAt,
+      saveAsDraft: intent === "draft",
     });
 
-    setSubmitting(false);
+    setSubmitting(null);
 
     if (!result.ok) {
       setSubmitError(result.error.message);
       return;
     }
 
-    setPublishedListingId(result.data.listingId);
+    clearLocalDraft();
+
+    if (intent === "publish") {
+      setPublishedListingId(result.data.listingId);
+    } else {
+      setSubmitError(null);
+      router.push(`/sell?listing=${result.data.listingId}`);
+    }
+  }
+
+  function handleListAnother() {
+    if (!publishedListingId) return;
+    // §10 Epic B2 AC4.
+    track("list_another_clicked", { from_listing_id: publishedListingId });
+
+    // §10 Epic B2 AC3: category, brand, and condition carry over; every
+    // other field — including description and photos — starts empty.
+    const preservedBrand = attributeValues["brand"];
+    const preservedCategory = categorySlug;
+    const preservedCondition = condition;
+
+    setPublishedListingId(null);
+    setTitle("");
+    setDescription("");
+    setPriceNaira("");
+    setConditionNotes("");
+    setPhotos([]);
+    setFlawPhotoIndexes([]);
+    setAttributeValues(preservedBrand !== undefined ? { brand: preservedBrand } : {});
+    setCategorySlug(preservedCategory);
+    setCondition(preservedCondition);
+    setDraftStartedAt(Date.now());
+    setSubmitError(null);
   }
 
   if (publishedListingId) {
     return (
-      <div className="mt-8 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
-        <p className="font-medium">Listing published.</p>
-        <p className="mt-1">It&apos;s live now and can be found through search and by direct link.</p>
+      <div className="mt-8 flex flex-col gap-4">
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+          <p className="font-medium">Listing published.</p>
+          <p className="mt-1">It&apos;s live now and can be found through search and by direct link.</p>
+        </div>
+        {/* §10 Epic B2 AC2: "List another" is the primary action. */}
+        <Button type="button" onClick={handleListAnother} className="self-start">
+          List another item
+        </Button>
+        <a href="/dashboard/listings" className="text-sm text-zinc-600 underline dark:text-zinc-400">
+          Continue to dashboard
+        </a>
       </div>
     );
   }
@@ -316,13 +513,20 @@ export function ListingForm({
 
   return (
     <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-5">
+      {restoredFromLocalDraft ? (
+        <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
+          Restored your unsaved draft from this browser.
+        </p>
+      ) : null}
+
       <label className="flex flex-col gap-1.5">
         <span className="text-sm font-medium">Category</span>
         <select
           value={categorySlug}
           onChange={(e) => handleCategoryChange(e.target.value)}
           required
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          disabled={isPublishedEdit}
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900"
         >
           <option value="" disabled>
             Select a category
@@ -333,6 +537,9 @@ export function ListingForm({
             </option>
           ))}
         </select>
+        {isPublishedEdit ? (
+          <span className="text-xs text-zinc-500">Locked once published. Remove and relist to change it.</span>
+        ) : null}
       </label>
 
       {selectedCategory && !selectedCategory.browsable ? (
@@ -378,8 +585,14 @@ export function ListingForm({
               min={500}
               max={5000000}
               required
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              disabled={isPublishedEdit}
+              className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900"
             />
+            {isPublishedEdit ? (
+              <span className="text-xs text-zinc-500">
+                Locked at {formatKobo(existingListing.priceKobo)} once published. Remove and relist to change it.
+              </span>
+            ) : null}
           </label>
 
           <label className="flex flex-col gap-1.5">
@@ -388,7 +601,8 @@ export function ListingForm({
               value={condition}
               onChange={(e) => setCondition(e.target.value)}
               required
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              disabled={isPublishedEdit}
+              className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900"
             >
               <option value="" disabled>
                 Select condition
@@ -399,6 +613,9 @@ export function ListingForm({
                 </option>
               ))}
             </select>
+            {isPublishedEdit ? (
+              <span className="text-xs text-zinc-500">Locked once published. Remove and relist to change it.</span>
+            ) : null}
           </label>
 
           {condition === "used" ? (
@@ -441,7 +658,7 @@ export function ListingForm({
             <div className="mt-2 flex flex-wrap gap-3">
               {photos.map((photo, index) => (
                 <div key={photo.id} className="flex w-28 flex-col gap-1">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- local blob/object URL preview, not a remote image */}
+                  {/* eslint-disable-next-line @next/next/no-img-element -- local blob/object URL or already-hosted photo preview */}
                   <img src={photo.previewUrl} alt="" className="h-28 w-28 rounded-md object-cover" />
                   {photo.uploading ? (
                     <span className="text-xs text-zinc-500">Uploading…</span>
@@ -475,9 +692,22 @@ export function ListingForm({
             </p>
           ) : null}
 
-          <Button type="submit" disabled={submitting} className="mt-2 self-start">
-            {submitting ? "Publishing…" : "Publish listing"}
-          </Button>
+          <div className="mt-2 flex gap-3">
+            {!isPublishedEdit ? (
+              <Button type="submit" value="draft" variant="outline" disabled={submitting !== null}>
+                {submitting === "draft" ? "Saving…" : "Save as draft"}
+              </Button>
+            ) : null}
+            <Button type="submit" value="publish" disabled={submitting !== null}>
+              {submitting === "publish"
+                ? isPublishedEdit
+                  ? "Saving…"
+                  : "Publishing…"
+                : isPublishedEdit
+                  ? "Save changes"
+                  : "Publish listing"}
+            </Button>
+          </div>
         </>
       ) : null}
     </form>

@@ -188,4 +188,40 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     Out of scope for this prompt by design — Epic B2 (draft autosave,
     "list another," the PRD's stated growth mechanism) and B4 (manage
     listings) are explicitly the next prompt's job.
-    **Status:** open, blocked on the next prompt.
+    **Status:** RESOLVED (Prompt 8). `updateListing`/`removeListing` server
+    actions, edit/resume mode in `/sell`, localStorage autosave, "list
+    another," and `/dashboard/listings` all now exist.
+
+## From Prompt 8
+
+22. **`listings` has no `view_count` column.** PRD Epic B4 AC1: "Seller
+    dashboard lists own listings with status, view count, and age."
+    `src/lib/database.types.ts` (hand-authored, issue #1/#10) has no such
+    column, and no migration has ever added one — view tracking was never
+    built in any prior prompt. `/dashboard/listings` (this prompt) shows
+    status, category, price, and age, but omits view count entirely rather
+    than fabricating a value or silently mislabeling age as views.
+    **Status:** open. Needs a `listing_viewed`-driven counter (or a
+    read-time aggregate over an events table) plus a migration before AC1
+    is fully met — out of scope for this prompt, which only builds the
+    management surface, not view analytics.
+
+23. **The §5.4 listing-limit gate's TOCTOU race (issue #19) is now duplicated in `updateListing`'s draft→publish path.**
+    `checkListingLimitGate` (extracted this prompt from `createListing`'s
+    inline check, see `docs/DECISIONS.md` — shared helper) is called
+    identically from both `createListing` and `updateListing`. Sharing the
+    helper means the fix, when it lands, closes the race in both call
+    sites at once — but until then, publishing a draft has the exact same
+    count-then-insert race as a fresh publish.
+    **Status:** open, same remedy as #19 (advisory lock or DB-level
+    trigger), now doubly motivating fixing it centrally rather than per
+    call site.
+
+24. **`/dashboard/listings` has no link from anywhere else in the app.**
+    No global nav/header component exists yet in the codebase (confirmed —
+    grepped for one before building this page), so there's nothing to add
+    a link to. The page is reachable directly and is linked *from*
+    (`listing-form.tsx`'s post-publish "Continue to dashboard"), but
+    nothing currently links *to* it from, e.g., `/dashboard/profile`.
+    **Status:** open, low priority. Revisit when a shared nav/header is
+    built — not this prompt's scope to invent one.
