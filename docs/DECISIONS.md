@@ -747,3 +747,36 @@ have zero listing-specific knowledge — Prompt 12 imports both as-is.
 **Revisit:** No, unless C4 surfaces a rendering difference between the two
 surfaces not anticipated here — in which case extend the component with an
 explicit prop, don't fork it.
+
+---
+
+## From the post-Prompt-11 QA session
+
+### 51. A real-browser QA pass (gstack `/qa`) found zero application bugs in Prompts 10/11's buyer-facing surface — two non-bugs documented, not fixed
+**Why this is worth a durable entry, not just a report:** everything up to
+this point verifying Epic C1–C3 had been done by curl, unit test, or direct
+Postgres query — real but not the same as an actual browser clicking
+through actual links. This session closed that gap independently: home
+page, `/c/beauty`, `/search`, and `/l/[id]` (both a `browsable` and a
+non-`browsable` listing) were exercised in a real headless-controlled
+browser. Result: every flow worked as designed, including the three-legged
+browsable gate (nav-absent / search-findable / direct-link-reachable) and,
+notably, `support_contact_opened` actually firing on a real click — the one
+thing Prompt 11 itself had explicitly flagged as read-for-correctness-only,
+never click-tested (Decision #49/#50's session).
+**The two things found, and why neither is a fix:**
+1. Repeated `400`s loading listing photos — traced to Prompt 11's own seed
+   script inserting placeholder Storage URLs with no file behind them
+   (confirmed by curling the raw Storage URL directly: same 400).
+   `next/image` degrades correctly regardless (alt text, zero layout
+   shift). Would not occur with a photo uploaded through the real `/sell`
+   flow, which only ever writes a URL after a confirmed successful upload.
+2. gstack's own `browse` tool's `snapshot -a` (annotate) fails on
+   `/c/beauty` — traced to the page's several attribute-filter `<select>`s
+   each carrying an identically-labelled default option ("Any"), valid
+   ordinary HTML (confirmed zero duplicate DOM `id`s on the page). A
+   testing-tool limitation, not an application defect; logged as a gstack
+   learning rather than changed here.
+**Revisit:** No — this is a point-in-time verification record. If a future
+session finds an actual bug in this surface, log it in `docs/KNOWN_ISSUES.md`
+as its own item, not by editing this entry.

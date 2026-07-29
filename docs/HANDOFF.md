@@ -367,3 +367,35 @@ Committed as `6538385` and pushed to `origin/main`. `docs/PROJECT_STATUS.md` ref
 **Next prompt should build:** seller public profile (`/s/[handle]`) — Epic C4. AC2 ("all published listings by that seller across all categories, regardless of `browsable`") needs a query shaped like `getRecentlyListed` but scoped to one seller and never checking `browsable` — same discipline as every other cross-category surface in `src/lib/discovery/queries.ts`. AC3 ("reputation block per C3 AC5") is already done: import `getSellerReputation`/`SellerReputationBlock` as-is from this prompt, don't rebuild.
 
 See `docs/DECISIONS.md` #44–#50 for this prompt's design choices.
+
+Committed as `54e93da` and pushed to `origin/main`.
+
+---
+
+## Un-numbered session — real-browser QA verification (post-Prompt 11)
+
+Not a build prompt — a QA pass over Prompts 10/11's buyer-facing surface using gstack's `/qa` skill, run in a real (headless-controlled) browser rather than curl/inspection. Same precedent as the un-numbered grants-fix session between Prompts 8 and 9: verification work important enough to log, but not part of the numbered prompt pack.
+
+**Scope:** home page, category browse (`/c/beauty`), search (`/search?q=jacket`), and listing detail (`/l/[id]`) for both a `browsable` (Beauty) and non-`browsable` (Fashion) listing — the exact surface Prompts 10 and 11 built. Used listings already seeded in the local dev database from Prompt 11's own verification session; no new seeding was needed.
+
+**Findings: zero application bugs.** Every flow clicked through exactly as designed:
+- Nav shows only "Beauty" on every page; "Recently listed" is cross-category. Confirmed at desktop and mobile (375×812) viewports, no layout shift, no overflow.
+- `/c/beauty` renders its filter form and the one Beauty listing.
+- `/search?q=jacket"` returns the **non-browsable Fashion listing**, labelled "Fashion" — confirming search's `browsable`-blindness live, not just by code inspection.
+- `/l/[id]` for both listings: condition `<details>` expands to the full definition text; the two-claims/remaining-PAO prominent block and measurements table render correctly; a zero-sales seller renders "New seller" + join date, nothing else.
+- **This closes a gap Prompt 11 had explicitly flagged as unverified:** clicking "Question about this item?" live fired `support_contact_opened {listing_id, category_id}` in the console, confirmed by direct observation, not by reading the code. `listing_viewed`'s `referrer_surface` was also confirmed discriminating correctly across real navigations (`category_page` from `/c/beauty`, `search` from search results, `direct` on a fresh load) — a stronger check than Prompt 11's own curl-with-a-fake-`Referer`-header test.
+- **Browsable gate, all three legs confirmed together, live:** Fashion absent from nav; findable via search; reachable by a fresh direct `goto` (200). Bonus: `/c/fashion` itself still 404s.
+
+**Two things found and documented, neither an app defect (see Decision #51):**
+1. Console showed repeated `400`s on listing photo images — traced to Prompt 11's own seed data pointing at Storage paths with no real uploaded file behind them (confirmed by curling the raw Storage URL directly: same 400). `next/image` degrades correctly (alt text, zero layout shift). Not a code issue; would not occur with a photo uploaded through the real `/sell` flow.
+2. gstack's own `browse` tool's `snapshot -a` (annotate) fails on `/c/beauty` with "Selector matched multiple elements" — traced to the page's several `<select>` filters each carrying an identically-labelled default option ("Any"), which is normal, valid markup (confirmed zero duplicate DOM `id`s). A testing-tool quirk, logged as a gstack learning; worked around with plain `snapshot`/`screenshot`.
+
+**Health score:** 91/100 (only the test-data image errors above depress it; every functional/UX/accessibility category scored 90+).
+
+**Also done this session (housekeeping, not product work):** gstack's one-time `/qa` setup — telemetry set to anonymous, proactive skill suggestions kept on, a "Skill routing" section added to `CLAUDE.md` (commit `edf418b`), and `.gstack/` (the QA report/screenshot working directory) added to `.gitignore` (commit `62e16fd`). Full QA report and 9 screenshots live at `.gstack/qa-reports/qa-report-localhost-2026-07-29.md` (gitignored, local only — not part of the repo's tracked history).
+
+**Not changed:** no source files were modified as a result of this session, since no bugs were found. `npm run typecheck`/`lint`/`test`/`build` were not re-run because nothing changed since Prompt 11's own clean run.
+
+See `docs/DECISIONS.md` #51.
+
+Committed as `edf418b` (routing) and `62e16fd` (gitignore), both pushed to `origin/main`. `main` is fully in sync with `origin/main` as of this session.

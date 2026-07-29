@@ -1,10 +1,10 @@
 # Urs2Cash — Project Status
 
-**As of:** 2026-07-29 (Prompt 11)
-**Sources:** `docs/urs2cash-prd.md` (v2.0, locked), `docs/HANDOFF.md` (Prompts 1–11), `docs/DECISIONS.md` (#1–50), `docs/KNOWN_ISSUES.md` (#1–24, several resolved/superseded by Prompt 11), repo state as of Prompt 11's uncommitted changes (`main`, one prior local-only commit `da5c0d4` also not yet pushed — see note below).
-**Verified for this report:** `npm run typecheck`, scoped `eslint "src/**/*.{ts,tsx}"`, `npm run test` (107/107), `npm run build` all clean. Two new migrations applied via `npx supabase db reset` and live-verified (not just syntax-checked) — see §3.
+**As of:** 2026-07-29 (Prompt 11 + post-Prompt-11 QA verification session)
+**Sources:** `docs/urs2cash-prd.md` (v2.0, locked), `docs/HANDOFF.md` (Prompts 1–11, plus two un-numbered sessions), `docs/DECISIONS.md` (#1–51), `docs/KNOWN_ISSUES.md` (#1–24, several resolved/superseded by Prompt 11), repo state at commit `62e16fd` (`main`, pushed to `origin/main` — confirmed fully in sync, `git status` clean).
+**Verified for this report:** `npm run typecheck`, scoped `eslint "src/**/*.{ts,tsx}"`, `npm run test` (107/107), `npm run build` all clean. Two new migrations applied via `npx supabase db reset` and live-verified (not just syntax-checked) — see §3. On top of that: a full real-browser QA pass (gstack `/qa`) over the buyer-facing discovery/detail surface found zero application bugs — see §3.5.
 
-**Uncommitted work note:** as of this report, both the `da5c0d4` docs-reorganisation commit (from the prior session) and all of Prompt 11's changes are local-only, not yet committed or pushed. Commit/push only on explicit instruction, per this project's standing git-safety norms.
+**Commit state:** `main` is fully committed and pushed. Four commits landed since the last report: `54e93da` (Prompt 11 itself), `edf418b` and `62e16fd` (QA-session housekeeping — CLAUDE.md skill routing, `.gitignore`), plus the earlier `da5c0d4` (docs reorganisation). `git log --oneline origin/main..HEAD` is empty.
 
 This is a handoff snapshot, not a living doc — re-verify anything load-bearing before acting on it.
 
@@ -20,7 +20,7 @@ A local Supabase stack has been running throughout recent sessions (`npx supabas
 
 A peer-to-peer recommerce marketplace for Nigeria (beauty-first, multi-category from day one). Sellers list pre-owned goods, buyers pay through escrow-lite (Paystack), funds release on delivery confirmation, platform takes 10% commission. No chat, no negotiation, no auction — the whole product bet is that a seller's *second listing* is the thing to optimize for (primary success metric: **second listing rate within 30 days**, target ≥40%, kill threshold <20% at 8 weeks/50 sellers).
 
-Ten "prompts" (build sessions) have shipped so far, each logged in full in `docs/HANDOFF.md`, plus one un-numbered session between Prompts 8 and 9 that fixed a critical schema-access bug (§3 below). This document summarizes where that leaves the codebase.
+Eleven "prompts" (build sessions) have shipped so far, each logged in full in `docs/HANDOFF.md`, plus two un-numbered sessions: one between Prompts 8 and 9 that fixed a critical schema-access bug (§3 below), and one after Prompt 11 that ran a full real-browser QA pass over the buyer-facing surface (§3.5). This document summarizes where that leaves the codebase.
 
 ---
 
@@ -70,6 +70,22 @@ Seven migrations exist. Every one has been applied via `npx supabase db reset` a
 
 ---
 
+## 3.5 Real-browser QA verification (post-Prompt 11, un-numbered session)
+
+Everything above verifying Epic C1–C3 (Prompts 9–11) had been checked by curl, unit test, or direct Postgres query — real verification, but not the same as an actual browser clicking actual links. This session closed that gap independently, using gstack's `/qa` skill against a running `npm run dev` instance and the same local Postgres.
+
+**Scope:** home page, category browse (`/c/beauty`), search (`/search?q=jacket`), and listing detail (`/l/[id]`) for both a `browsable` (Beauty) and non-`browsable` (Fashion) listing, plus a mobile-viewport (375×812) pass. Reused listings already seeded from Prompt 11's own verification session — no new seed data needed.
+
+**Result: zero application bugs found.** Every flow worked exactly as designed, including the three-legged `browsable` gate confirmed together in one session — Fashion absent from nav, findable via search (labelled "Fashion"), reachable by a fresh direct link (200) — and, notably, `support_contact_opened` was observed actually firing on a real click (`{listing_id, category_id: "beauty"}`), and `listing_viewed`'s `referrer_surface` was observed correctly discriminating `category_page` / `search` / `direct` across real navigations. Both had previously only been verified by reading the code or by a curl request with a fabricated `Referer` header (Prompt 11) — this is the first time either was confirmed by an actual browser interaction.
+
+**Two things found, neither an application defect** (full reasoning in Decision #51):
+1. Repeated console `400`s loading listing photos — traced to Prompt 11's own seed script using placeholder Storage URLs with no file actually uploaded behind them (confirmed: the raw Storage URL itself also 400s). `next/image` degrades correctly regardless (alt text shown, zero layout shift). A listing photographed through the real `/sell` upload flow would not hit this.
+2. gstack's own `browse` testing tool's annotate feature (`snapshot -a`) fails on `/c/beauty` — traced to the page's several attribute-filter dropdowns each having an identically-labelled default option ("Any"), ordinary valid HTML (confirmed zero duplicate DOM `id`s). A testing-tool limitation, not an app issue; logged as a gstack learning.
+
+Health score: 91/100 (dragged down only by the test-data image errors above; every functional/UX/accessibility category scored 90+). Full report and 9 screenshots at `.gstack/qa-reports/qa-report-localhost-2026-07-29.md` (gitignored — local only, not in the repo's tracked history, regenerate by re-running `/qa` if needed).
+
+---
+
 ## 4. Key architectural decisions (see `docs/DECISIONS.md` for full reasoning)
 
 - **Column-vs-JSONB split:** shared fields (`price_kobo`, `condition`, etc.) are real columns; category-local fields live in a Zod-validated `attributes` JSONB column. `condition` is modeled *inside* each category's Zod schema, then destructured back out before persisting (Decision #9).
@@ -89,7 +105,7 @@ Seven migrations exist. Every one has been applied via `npx supabase db reset` a
 
 ## 5. Known issues (see `docs/KNOWN_ISSUES.md` for the full list; several resolved since the last report)
 
-**Resolved since the last status report:** #1, #10 (hand-authored types → real CLI-generated), and the entire Docker-unavailable family (#1/#2/#3/#4/#8/#13/#16/#17/#18) via live verification. #24 (no global nav) is partially resolved — Prompt 10 built one, but it's buyer-facing only and still doesn't link to `/dashboard/listings`. The former "`/l/[id]` doesn't exist" gap is now resolved (Prompt 11).
+**Resolved since the last status report:** #1, #10 (hand-authored types → real CLI-generated), and the entire Docker-unavailable family (#1/#2/#3/#4/#8/#13/#16/#17/#18) via live verification. #24 (no global nav) is partially resolved — Prompt 10 built one, but it's buyer-facing only and still doesn't link to `/dashboard/listings`. The former "`/l/[id]` doesn't exist" gap is now resolved (Prompt 11). **Also resolved, by the post-Prompt-11 QA session:** Prompt 11's own flagged gap that `support_contact_opened`'s client-side firing and `listing_viewed`'s `referrer_surface` attribution had only been read/curl-tested, never exercised in a real browser — both are now confirmed live (§3.5).
 
 **Still open, in rough priority order:**
 1. **No admin-role verification mechanism exists anywhere** (issue #12, Decision #20). Must land before any Epic E code is written — this is a schema decision (an admin claim/column) that deserves its own deliberate migration.
@@ -100,13 +116,15 @@ Seven migrations exist. Every one has been applied via `npx supabase db reset` a
 6. **Dynamic listing form only reveals `usageIndicatorFields` conditionally** (issue #20) — other conditionally-required fields always render once a category is picked. Server-side enforcement is complete; UX-only gap.
 7. **Numeric attribute range filtering is out of scope on category pages** (Decision #42) — not a defect, a documented scope boundary tied to the current GIN index shape.
 8. **No edge caching (`revalidate`) on any discovery/detail page** — `createClient()`'s use of `cookies()` forces dynamic rendering regardless of any `revalidate` export; genuine caching would need a separate non-cookie-bound anon client, a real architecture change not taken on as a side effect of Prompt 10 or 11.
-9. **A seller can preview her own `draft` listing at `/l/[id]`** (new, Prompt 11) — an incidental consequence of `listings_select_own` RLS letting an owner read any status of her own row. Not harmful (no purchase path exists to expose), not asked for, just worth knowing.
-10. **Per-listing hygiene notices (e.g. flagging Beauty's hygiene-sensitive product types specifically) were not built** (new, Prompt 11, Decision #49) — narrowed to what's registry-derivable; Personal Care's category-wide "used disallowed" policy is already structurally visible via its condition selector.
-11. **`support_contact_opened`'s client-side firing was read for correctness, not exercised in a real browser** (new, Prompt 11) — no browser-automation tooling was available in this environment to click the link and observe the console log.
+9. **A seller can preview her own `draft` listing at `/l/[id]`** (Prompt 11) — an incidental consequence of `listings_select_own` RLS letting an owner read any status of her own row. Not harmful (no purchase path exists to expose), not asked for, just worth knowing. Untouched by the QA session (out of its buyer-facing scope).
+10. **Per-listing hygiene notices (e.g. flagging Beauty's hygiene-sensitive product types specifically) were not built** (Prompt 11, Decision #49) — narrowed to what's registry-derivable; Personal Care's category-wide "used disallowed" policy is already structurally visible via its condition selector.
+11. **Real-uploaded-photo Lighthouse LCP still hasn't been measured** — both Prompt 11's own Lighthouse run and the QA session's screenshots used seed data with placeholder (never-uploaded) Storage URLs. Structural mitigations (`next/image` format negotiation, `priority` on the first gallery photo) are in place, but an end-to-end run through the real `/sell` upload flow with a genuine photo hasn't been done.
 
 ---
 
 ## 6. Recommended next steps
+
+Epic C1–C3 (browse, search, listing detail) now has two independent layers of verification behind it — Prompt 10/11's own live checks against Postgres/the running app, and a separate real-browser QA pass (§3.5) that found zero bugs. Epic C4 can be built on that foundation with confidence; there's no outstanding cleanup on C1–C3 to do first.
 
 In dependency order:
 
