@@ -1,10 +1,10 @@
 # Urs2Cash — Project Status
 
-**As of:** 2026-07-29 (Prompt 11 + post-Prompt-11 QA verification session)
-**Sources:** `docs/urs2cash-prd.md` (v2.0, locked), `docs/HANDOFF.md` (Prompts 1–11, plus two un-numbered sessions), `docs/DECISIONS.md` (#1–51), `docs/KNOWN_ISSUES.md` (#1–24, several resolved/superseded by Prompt 11), repo state at commit `62e16fd` (`main`, pushed to `origin/main` — confirmed fully in sync, `git status` clean).
-**Verified for this report:** `npm run typecheck`, scoped `eslint "src/**/*.{ts,tsx}"`, `npm run test` (107/107), `npm run build` all clean. Two new migrations applied via `npx supabase db reset` and live-verified (not just syntax-checked) — see §3. On top of that: a full real-browser QA pass (gstack `/qa`) over the buyer-facing discovery/detail surface found zero application bugs — see §3.5.
+**As of:** 2026-07-29 (Prompt 12 session)
+**Sources:** `docs/urs2cash-prd.md` (v2.0, locked), `docs/HANDOFF.md` (Prompts 1–12, plus two un-numbered sessions), `docs/DECISIONS.md` (#1–53), `docs/KNOWN_ISSUES.md` (#1–24, several resolved/superseded by Prompt 11), repo state pending commit on `main` at the time of writing (branch was at `62e16fd`, this session's changes committed after this report).
+**Verified for this report:** `npm run typecheck`, scoped `eslint "src/**/*.{ts,tsx}"`, `npm run test` (107/107), `npm run build` all clean. Prompt 12 added no migration (no schema change needed — every field/table it reads already existed). Live-verified against the running dev server and local Postgres, reusing Prompt 11's own seed sellers — see `docs/HANDOFF.md`'s Prompt 12 entry for the full verification log.
 
-**Commit state:** `main` is fully committed and pushed. Four commits landed since the last report: `54e93da` (Prompt 11 itself), `edf418b` and `62e16fd` (QA-session housekeeping — CLAUDE.md skill routing, `.gitignore`), plus the earlier `da5c0d4` (docs reorganisation). `git log --oneline origin/main..HEAD` is empty.
+**Commit state:** as of the start of this session, `main` was fully committed and pushed at `62e16fd`. This report is written before Prompt 12's own commit — see `git log` for the actual current HEAD.
 
 This is a handoff snapshot, not a living doc — re-verify anything load-bearing before acting on it.
 
@@ -35,13 +35,13 @@ Eleven "prompts" (build sessions) have shipped so far, each logged in full in `d
 | **B4 — Manage listings** | Mostly built | `/dashboard/listings`, `updateListing`/`removeListing` (both now also scan for contact details on every edit), immutable-field enforcement, blocking-order check. **Gap:** no `view_count` (schema never added it — issue #22). |
 | **C1 — Category browse** | **Built (Prompt 10)** | `/c/[slug]`, Server Component, 404s on `browsable=false` or unknown slug, price/condition/registry-attribute filters with state entirely in the URL. |
 | **C2 — Search** | **Built (Prompt 10)** | `/search`, full-text via a new `search_listings` SQL function over the §7.1 tsvector index, cross-category, `browsable` never checked — verified live. |
-| **C3 — Listing detail** | **Built (Prompt 11)** | `/l/[id]`, Server Component. Photo gallery with flaw-tagged labels, registry-driven generic attribute display (two-claims prominence, measurements sub-table, computed remaining-PAO), full condition definition text, seller reputation block, OG tags, `imei_last_6` stripped at the data layer. Reachable regardless of `browsable`; widened to also serve `sold` listings (new RLS policy). |
-| **C4 — Seller public profile** | **Not built — next up** | No `/s/[handle]`. The reputation query/component were built reusable in Prompt 11 specifically for this — import as-is, don't rebuild. |
-| **D — Purchase & escrow** | **Not built** | No checkout, no Paystack webhook route, no order state machine code (schema + triggers exist), no shipping/delivery/dispute/rating actions. |
+| **C3 — Listing detail** | **Built (Prompt 11)** | `/l/[id]`, Server Component. Photo gallery with flaw-tagged labels, registry-driven generic attribute display (two-claims prominence, measurements sub-table, computed remaining-PAO), full condition definition text, seller reputation block, OG tags, `imei_last_6` stripped at the data layer. Reachable regardless of `browsable`; widened to also serve `sold` listings (new RLS policy). "About the seller" now links to the seller's public profile (Prompt 12). |
+| **C4 — Seller public profile** | **Built (Prompt 12)** | `/s/[handle]`, Server Component. Header (avatar/display name/bio/member-since/state), reputation block reused as-is from Prompt 11, paginated published-listings grid across all categories (`browsable` never checked), paginated non-hidden reviews list. No contact/messaging affordance anywhere. |
+| **D — Purchase & escrow** | **Not built — next up** | No checkout, no Paystack webhook route, no order state machine code (schema + triggers exist), no shipping/delivery/dispute/rating actions. |
 | **E — Admin** | **Not built** | No `/admin` routes, no admin server actions, no admin-role mechanism at all (Known Issue #12). |
 | **Moderation (§9.3)** | **Built (Prompt 9)** | Real Nigerian-phone/email/WhatsApp/Instagram/Telegram/URL detector, wired into listing create + edit. Rating-review scanning has no call site yet (`ratings.ts` action doesn't exist — Epic D6). |
 
-**Net:** the database schema is complete for the whole PRD and, as of the un-numbered session before Prompt 9, **actually verified against a live Postgres instance** — this is new since the last status report. The application layer now covers **Epic A (partial), Epic B (full except price guidance), moderation detection, and three-quarters of Epic C** (browse + search + listing detail; only seller public profile remains). **Epics D and E have zero application code.**
+**Net:** the database schema is complete for the whole PRD and, as of the un-numbered session before Prompt 9, **actually verified against a live Postgres instance**. The application layer now covers **Epic A (partial), Epic B (full except price guidance), moderation detection, and all of Epic C** (browse, search, listing detail, seller public profile — Prompt 12 closes out the epic). **Epics D and E have zero application code** — Epic D (purchase & escrow) is next.
 
 ---
 
@@ -124,14 +124,13 @@ Health score: 91/100 (dragged down only by the test-data image errors above; eve
 
 ## 6. Recommended next steps
 
-Epic C1–C3 (browse, search, listing detail) now has two independent layers of verification behind it — Prompt 10/11's own live checks against Postgres/the running app, and a separate real-browser QA pass (§3.5) that found zero bugs. Epic C4 can be built on that foundation with confidence; there's no outstanding cleanup on C1–C3 to do first.
+Epic C (browse, search, listing detail, seller public profile) is now fully built and live-verified end to end — Prompt 12 closes it out. There's no outstanding cleanup on C1–C4 to do first.
 
 In dependency order:
 
-1. **Seller public profile (`/s/[handle]`) — Epic C4.** The immediate next prompt. AC2 needs a query shaped like `getRecentlyListed` (Prompt 10) but scoped to one seller, never checking `browsable`. AC3's reputation block is already done — `src/lib/reputation/get-seller-reputation.ts` and `src/components/reputation/seller-reputation-block.tsx` (Prompt 11) were built reusable specifically for this; import as-is, don't rebuild.
+1. **Epic D (purchase & escrow) — checkout, order creation, Paystack `initialize`.** The immediate next prompt, and the largest remaining surface — the PRD's core success metrics (listing-to-sale conversion, dispute rate) depend on it. Schema and triggers already exist (orders' commission/payout CHECK constraints, the state machine's status enum); checkout, the Paystack webhook, order-state-machine actions, and dispute/rating flows do not. Read §8 (order lifecycle/escrow) and §9.1 (contact-detail release timing) carefully — this is the first prompt that touches real money and real buyer/seller contact info.
 2. **Admin-role mechanism** (Known Issue #12) — needed before any Epic E work; land it as its own deliberate migration.
-3. **Epic D (purchase & escrow)** — the largest remaining surface and the one the PRD's core success metrics (listing-to-sale conversion, dispute rate) depend on. Schema and triggers already exist; checkout, the Paystack webhook, order-state-machine actions, and dispute/rating flows do not.
-4. Close the TOCTOU race (#19/#23) and the orders-column-privacy gap (#14) opportunistically while touching those areas in Epic D, rather than as standalone work.
-5. **B3 (price guidance)**, **view_count (#22)**, and the seller-facing nav link (#24) are small, self-contained, and can slot in whenever convenient.
+3. Close the TOCTOU race (#19/#23) and the orders-column-privacy gap (#14) opportunistically while touching those areas in Epic D, rather than as standalone work.
+4. **B3 (price guidance)**, **view_count (#22)**, and the seller-facing nav link (#24) are small, self-contained, and can slot in whenever convenient.
 
 Rating-review contact-detail scanning (§7.1 HARD RULE, Epic D6) has a documented TODO in `src/lib/moderation/contact-detector.ts`'s module docstring specifying exactly how to wire it once `submitRating`/`src/lib/actions/ratings.ts` exists — don't rebuild this from scratch when Epic D6 lands.

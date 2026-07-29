@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { getListingDetail } from "@/lib/discovery/get-listing";
@@ -143,10 +144,18 @@ export default async function ListingDetailPage({ params }: { params: Promise<Pa
 
       <AttributeTable heading="Details" rows={attributeDisplay.table} />
 
-      {/* §9.2 Job 3 / §10 Epic C3 AC5-AC5b. */}
+      {/* §9.2 Job 3 / §10 Epic C3 AC5-AC5b. The "About the seller" heading
+          links to the full public profile (Epic C4, Prompt 12) — the same
+          reputation data already fetched here, just also the entry point
+          into the seller's full catalogue and review history. */}
       {reputation ? (
         <div>
-          <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">About the seller</h2>
+          <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            About the seller ·{" "}
+            <Link href={`/s/${reputation.handle}`} className="underline">
+              {reputation.displayName}
+            </Link>
+          </h2>
           <SellerReputationBlock reputation={reputation} />
         </div>
       ) : null}

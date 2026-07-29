@@ -780,3 +780,46 @@ never click-tested (Decision #49/#50's session).
 **Revisit:** No — this is a point-in-time verification record. If a future
 session finds an actual bug in this surface, log it in `docs/KNOWN_ISSUES.md`
 as its own item, not by editing this entry.
+
+---
+
+## From Prompt 12
+
+### 52. Seller avatar rendered with a plain `<img>`, not `next/image`
+**Why:** `avatar_url` (`src/lib/validation/index.ts`'s `avatarUrl` field) is
+arbitrary seller-supplied input — any URL that passes `z.string().url()`, not
+a value constrained to Supabase Storage the way every listing photo is.
+`next.config.ts`'s `images.remotePatterns` allowlists only Supabase Storage
+hosts (Decision from Prompt 7/10's `next.config.ts` comment); `next/image`
+throws at request time for any host not on that list. Widening the allowlist
+to arbitrary external hosts to support this one field would be a real
+security/abuse-surface tradeoff (SSRF-adjacent image-proxy exposure to any
+URL a seller types) that this prompt's scope doesn't call for. A plain
+`<img>` with `loading="lazy"` (the browser default, not `next/image`'s
+optimization pipeline) avoids the tradeoff entirely; a missing avatar falls
+back to a plain initial-letter circle, matching the "never render a new or
+incomplete seller negatively" spirit already governing the reputation block.
+**Revisit:** If a future prompt moves avatar upload onto the same
+Storage-bucket pattern as listing photos (client-side upload,
+`getPublicUrl`, no arbitrary external URL ever accepted), switch this back
+to `next/image` at that point — the constraint that currently rules it out
+would no longer hold.
+
+### 53. Reviews section paginates all non-hidden, review-bearing ratings; the reputation block's "recent reviews" stays capped at 3
+**Why:** the prompt brief asks for both — the reputation block reused
+exactly as Prompt 11 built it (Decision #50, capped at 3, no changes) and a
+separate, paginated "the seller's received ratings/reviews (non-hidden)"
+section. Rather than invent a second filtering rule for the paginated list,
+`get-seller-reviews.ts` uses the identical filter `get-seller-reputation.ts`
+already applies to its `recentReviews` (`is_hidden = false`, `review is not
+null`) and the identical `SellerReview` type — the paginated list is
+literally "the same query, unbounded and paged" rather than a
+independently-designed second view of the same table. `ratings_public`
+already exposes every row with `review` nulled server-side when hidden
+(Decision #24) and non-hidden rows otherwise intact; filtering to
+`is_hidden = false` here matches that view's own public-read intent rather
+than re-deriving a different visibility rule for this one page.
+**Revisit:** No, unless a future prompt wants the paginated list to also
+surface score-only ratings with no written review text (currently excluded,
+consistent with `recentReviews`) — that would be a deliberate broadening of
+what counts as a displayable "review," not a fix to this decision.

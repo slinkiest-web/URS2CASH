@@ -195,3 +195,33 @@ export async function getCategoryListings(
   const hasMore = rows.length > PAGE_SIZE;
   return { items: rows.slice(0, PAGE_SIZE).map((row) => toCardData(row)), hasMore };
 }
+
+/**
+ * PRD §10 Epic C4 AC2 / §4: a seller's public profile lists every published
+ * listing she has across ALL categories, `browsable` never checked — the
+ * second deliberately browsable-blind cross-category surface in this file
+ * after `getRecentlyListed`, same reasoning (a founding seller in a
+ * pre-browsable category still needs a findable, linkable catalogue).
+ * Paginated like `getCategoryListings`; category names joined like
+ * `getRecentlyListed`, since results span categories.
+ */
+export async function getSellerListings(supabase: Client, sellerId: string, page: number): Promise<PagedListings> {
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE;
+
+  const { data } = await supabase
+    .from("listings")
+    .select("id, title, price_kobo, condition, photo_urls, category_id")
+    .eq("seller_id", sellerId)
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .range(from, to);
+
+  const rows = data ?? [];
+  const hasMore = rows.length > PAGE_SIZE;
+  const pageRows = rows.slice(0, PAGE_SIZE);
+
+  const categoryNames = await getCategoryNames(supabase, Array.from(new Set(pageRows.map((row) => row.category_id))));
+
+  return { items: pageRows.map((row) => toCardData(row, categoryNames.get(row.category_id))), hasMore };
+}
