@@ -801,6 +801,39 @@ export type Database = {
     }
     Functions: {
       generate_unique_handle: { Args: { base: string }; Returns: string }
+      mark_order_paid: {
+        Args: { p_order_id: string }
+        Returns: {
+          amount_kobo: number
+          auto_release_at: string | null
+          buyer_id: string
+          commission_kobo: number
+          created_at: string
+          delivered_at: string | null
+          delivery_address: string
+          delivery_name: string
+          delivery_phone: string
+          delivery_state: string
+          disputed_at: string | null
+          id: string
+          listing_id: string
+          paid_at: string | null
+          paystack_reference: string | null
+          refunded_at: string | null
+          released_at: string | null
+          seller_id: string
+          seller_payout_kobo: number
+          shipped_at: string | null
+          status: string
+          tracking_note: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       search_listings: {
         Args: {
           result_limit?: number

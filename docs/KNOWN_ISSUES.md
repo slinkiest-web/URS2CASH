@@ -128,6 +128,13 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     explicit column selection in the order-detail server action) before any
     order-read path is built — don't let a future prompt `SELECT *` this
     table for a buyer-facing or pre-`paid` seller-facing view.
+    **Update (Prompt 14):** no longer theoretical — the webhook now creates
+    real `status = 'paid'` orders with real delivery data. The exposure
+    itself is unchanged (the webhook is server-to-server and renders
+    nothing to any client, so this prompt didn't make it *worse*), but the
+    underlying base-table gap is now sitting behind real payment data
+    instead of only `pending` test rows. Should be closed as part of the
+    very next order-detail read surface, not deferred again.
 
 15. **`orders.tracking_note`'s "≥3 characters, required when marking shipped" rule (Epic D3 AC2) has no database-level enforcement.**
     Unlike `listings.condition_notes`, the PRD doesn't use "enforced by...
@@ -278,6 +285,41 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     completes and returns a structured `{status, message}` error response
     (confirming connectivity and request well-formedness), not by a
     successful transaction.
-    **Status:** open. Would need a real (test-mode) Paystack account to
-    close — not something available in this environment. Revisit if/when
-    one is provisioned.
+    **Status:** partially RESOLVED (Prompt 14). A real `sk_test_...` key is
+    now configured, and the webhook *handler's* own correctness (signature
+    verification, idempotency, amount/reference reconciliation, the atomic
+    paid+sold transition, event firing) is fully live-verified using
+    hand-constructed payloads signed with that real key — this is a
+    complete test of everything this codebase controls. What's still
+    unverified, and still needs either a tunnel (ngrok) or a real completed
+    test-mode payment: the actual external round trip — a real browser
+    completing payment on Paystack's own hosted page, Paystack's real
+    infrastructure delivering the resulting webhook to this app over the
+    public internet. **Status:** open on that external half only.
+
+## From Prompt 14
+
+28. **No transactional (non-auth) email sending exists anywhere in the codebase.**
+    §10 Epic D2 AC6 ("emails to buyer and seller within 10 seconds" on
+    `order_paid`) is not built — this prompt's own task item list didn't
+    ask for it, and Decision #4 (Prompt 2) already flagged this exact
+    boundary as a future "revisit" point. The only observable side effects
+    of a successful webhook today are the `order_paid`/
+    `contact_details_released` analytics events (currently a synchronous
+    `console.log` stub, per `src/lib/analytics/events.ts`'s own
+    documented TODO).
+    **Status:** open. When built, should be queued/deferred rather than
+    inlined into the webhook's response path (the task's own item 6 —
+    "queue slow work rather than inlining it") so a slow email provider
+    can never delay the 200 response Paystack is waiting on.
+
+29. **Amount/reference-mismatch "admin flag" (§10 Epic D2 AC4) has no dedicated table or UI — see `docs/DECISIONS.md` #58.**
+    Reused `webhook_events.processed_at IS NULL` as the queryable signal
+    instead of forcing the flag into `moderation_flags` (wrong semantic
+    fit — see Decision #58 for the full reasoning) or inventing a new
+    table the PRD doesn't specify. No human currently sees this without
+    directly querying the database; there's no notification, no admin UI
+    (Epic E doesn't exist yet).
+    **Status:** open. Revisit deliberately when Epic E1/E2 (or a dedicated
+    admin-alerting surface) is actually designed — don't let the
+    `processed_at IS NULL` convention become permanent by default.

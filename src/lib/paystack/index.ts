@@ -7,6 +7,7 @@
  * `server-only` import below makes that a build-time error.
  */
 import "server-only";
+import crypto from "node:crypto";
 
 const PAYSTACK_BASE_URL = "https://api.paystack.co";
 
@@ -25,13 +26,14 @@ export type InitializeTransactionResult =
 /**
  * PRD §11.2 `initiateCheckout` / §10 Epic D1 AC6: calls Paystack's
  * `/transaction/initialize` server-side, with the order id in `metadata` so
- * the webhook (Prompt 14) can correlate the eventual `charge.success` event
- * back to this order. Paystack generates its own `reference`; the caller is
- * responsible for persisting it to `orders.paystack_reference`, not this
- * function (it has no database access — a pure API client).
+ * the webhook (Prompt 14, `verifyWebhookSignature` below) can correlate the
+ * eventual `charge.success` event back to this order. Paystack generates
+ * its own `reference`; the caller is responsible for persisting it to
+ * `orders.paystack_reference`, not this function (it has no database
+ * access — a pure API client).
  *
- * TODO(prompt 14): add `verify` (webhook cross-check, §10 Epic D2 AC4) and
- * `refund` (admin dispute resolution, Epic D5) helpers to this module.
+ * TODO: `refund` (admin dispute resolution, Epic D5) belongs in this module
+ * too, once Epic E's dispute arbitration is built.
  * TODO: `resolve-account` (Epic A3 AC3) belongs here too, once
  * `/api/paystack/resolve-account` is built.
  */
@@ -73,4 +75,35 @@ export async function initializeTransaction(
   }
 
   return { ok: true, authorizationUrl: json.data.authorization_url, reference: json.data.reference };
+}
+
+/**
+ * PRD §10 Epic D2 AC1: verifies the `x-paystack-signature` header against
+ * the RAW request body — HMAC-SHA512, keyed with `PAYSTACK_SECRET_KEY`.
+ * Paystack has no separate webhook-signing secret; the account's own secret
+ * key is the HMAC key for both `initialize` auth and webhook signing (see
+ * docs/DECISIONS.md #57 — confirmed against Paystack's own docs, not
+ * assumed). The caller MUST pass the exact bytes Paystack sent
+ * (`await request.text()`, never a re-serialized `JSON.stringify` of a
+ * parsed body) — signing is byte-exact, and re-serialization can silently
+ * produce a different string (key order, whitespace) that would make a
+ * genuine signature fail to verify.
+ *
+ * Constant-time comparison (`crypto.timingSafeEqual`) to avoid a timing
+ * side-channel on the signature check itself — this is the single most
+ * security-sensitive comparison in the codebase (PRD's own framing for this
+ * prompt), so it gets the careful version, not `===`.
+ */
+export function verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {
+  const secretKey = process.env["PAYSTACK_SECRET_KEY"];
+  if (!secretKey || !signatureHeader) return false;
+
+  const expectedHex = crypto.createHmac("sha512", secretKey).update(rawBody, "utf8").digest("hex");
+
+  const expectedBuffer = Buffer.from(expectedHex, "hex");
+  const providedBuffer = Buffer.from(signatureHeader, "hex");
+
+  if (expectedBuffer.length !== providedBuffer.length) return false;
+
+  return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
 }

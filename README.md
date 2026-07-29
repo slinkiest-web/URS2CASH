@@ -31,7 +31,9 @@ cp .env.local.example .env.local
 
 Open `.env.local` and populate every variable. See the comments inside for which variables are client-safe (`NEXT_PUBLIC_*`) and which are server-only.
 
-> **HARD RULE (PRD §12.3 & §12.4):** `SUPABASE_SERVICE_ROLE_KEY`, `PAYSTACK_SECRET_KEY`, `PAYSTACK_WEBHOOK_SECRET`, and `RESEND_API_KEY` must **never** be prefixed with `NEXT_PUBLIC_`. They are server-only. Leaking any of these to the client bundle is a critical security failure.
+> **HARD RULE (PRD §12.3 & §12.4):** `SUPABASE_SERVICE_ROLE_KEY`, `PAYSTACK_SECRET_KEY`, and `RESEND_API_KEY` must **never** be prefixed with `NEXT_PUBLIC_`. They are server-only. Leaking any of these to the client bundle is a critical security failure.
+>
+> There is no separate `PAYSTACK_WEBHOOK_SECRET` — Paystack signs webhooks with the same account secret key (`PAYSTACK_SECRET_KEY`), not a distinct per-endpoint signing secret. See `docs/DECISIONS.md` #57.
 
 ### 3. Start Supabase locally
 

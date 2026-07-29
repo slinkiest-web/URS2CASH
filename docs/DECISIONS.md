@@ -901,3 +901,113 @@ application code even where another layer currently also guarantees it
 through GoTrue's own confirmation gate — at that point this stops being
 unreachable and the reasoning above should be re-read against the new
 path, not removed.
+
+---
+
+## From Prompt 14
+
+### 57. There is no `PAYSTACK_WEBHOOK_SECRET` — webhook signatures are verified with `PAYSTACK_SECRET_KEY`
+**Why:** the PRD's own §12.4 ("Paystack secret and public keys, Paystack
+webhook secret...") and the Prompt-1 scaffold's `.env.local.example` both
+assumed Paystack issues a distinct, per-endpoint webhook-signing secret —
+the shape Stripe uses (`whsec_...`). Checked against Paystack's own
+documentation before building anything (not assumed): *"the
+`x-paystack-signature` header... contains a HMAC SHA512 signature of the
+event payload signed using your secret key."* Paystack has no separate
+signing secret at all; the account's own `sk_test_.../sk_live_...` key is
+the HMAC key for both `/transaction/initialize` calls and inbound webhook
+verification. Resolved in favor of what Paystack actually does, not what
+the PRD assumed a payments provider does in general. Removed the
+`PAYSTACK_WEBHOOK_SECRET` line from `.env.local.example` and the matching
+line from `README.md`'s HARD RULE callout — leaving it in place would have
+been actively misleading (a real value someone might set there is simply
+never read by anything).
+**Revisit:** No, unless Paystack itself introduces a genuine per-endpoint
+signing secret in the future — re-verify against their docs at that point
+rather than assuming this decision is stale.
+
+### 58. Amount/reference mismatch has no dedicated admin-flag table — surfaced via `webhook_events.processed_at IS NULL`
+**Why:** §10 Epic D2 AC4 says a mismatch "creates an admin flag," but no
+PRD table fits this. `moderation_flags` (§9.3) is scoped to listing
+content moderation — its `source` enum (`auto_contact_detect`,
+`user_report`, `admin`) and Epic E1's own ACs (AC2: "dismiss, or suspend
+the listing") have no meaningful action for a payment-integrity anomaly; a
+payment discrepancy isn't something a moderator "dismisses or suspends a
+listing" over. `disputes` doesn't fit either — structurally, disputes
+require the order to already be `paid`/`shipped`/`delivered` (§8.1 HARD
+RULE), and this order is by definition *not* transitioning to `paid`.
+Rather than force-fit an ill-suited table or invent a new one the PRD
+doesn't specify, a mismatch leaves the already-inserted `webhook_events`
+row's `processed_at` column `null` — every other terminal outcome in the
+handler (wrong event type, order not found, already-non-pending) sets it —
+so `select * from webhook_events where processed_at is null` is a precise,
+queryable signal for exactly this class of anomaly, using only columns the
+table already has. Paired with a structured `console.error` at the moment
+of detection for immediate visibility. Also applied to a second, cheap
+check beyond AC4's literal ask: the webhook's `data.reference` is compared
+against the order's own stored `paystack_reference` (set once, right after
+`initialize`, Prompt 13) — same class of "don't trust it blindly" concern,
+same flagged-not-transitioned treatment.
+**Revisit:** Yes, when Epic E1 (or a dedicated admin alerting surface) is
+actually built — at that point, decide deliberately whether payment
+anomalies get their own table/queue or whether querying
+`webhook_events.processed_at IS NULL` is genuinely sufficient long-term.
+Don't let this stay the permanent answer by default.
+
+### 59. No `order_events` table; `order_paid` fires with `is_repeat_buyer`, not `buyer_order_ordinal`
+**Why:** this prompt's own item list asked for "an `order_events` row
+(actor_role system)" and an `order_paid` event carrying
+"`buyer_order_ordinal`" — grepped the whole PRD for both terms, zero hits
+anywhere outside this prompt's own instructions. `order_events` is the
+exact same invented table Prompt 5 already rejected in favor of `disputes`
+(Decision #21) — building it now would directly contradict that resolved
+decision. `buyer_order_ordinal` doesn't exist in §3.5's event table at
+all; the actual `order_paid` properties listed there are `order_id`,
+`listing_id`, `category_id`, `amount_kobo`, `commission_kobo`,
+`is_repeat_buyer` — and §10 Epic D2 AC5 independently confirms
+`is_repeat_buyer`, "computed from prior released orders by that buyer," by
+name. Same shape as Prompt 6's `seller_listing_ordinal` invention
+(Decision #26) — resolved the same way, in favor of the PRD's literal
+text, without needing to ask this time since the precedent is now
+well-established. The audit trail the task item was reaching for with
+"`order_events`" already exists without a new table: `orders.paid_at`
+(set once, by `mark_order_paid`, never touched again) records *when*, and
+`webhook_events.payload` (the verbatim raw Paystack event, retained
+permanently) records *what triggered it* — together a complete, queryable
+record of the transition with no redundant table.
+**Revisit:** No — this is the second time this exact class of
+task-brief-vs-PRD mismatch has come up (Decisions #21, #26); the pattern
+is settled. If a future prompt's brief invents another table/property name
+not found by grepping the PRD, resolve in favor of the PRD the same way,
+document it, and don't ask again unless it's a genuine two-HARD-RULE
+conflict (the shape Decision #35 was).
+
+### 60. `mark_order_paid` is a plain (non-`SECURITY DEFINER`) Postgres function with `EXECUTE` explicitly revoked from `public`/`anon`/`authenticated`
+**Why:** §8.1's HARD RULE — "`paid` is entered by the Paystack webhook and
+by nothing else" — is this prompt's central security requirement, and the
+PRD explicitly frames this whole prompt as "the single most
+security-sensitive piece of the build." Supabase-js has no multi-table
+transaction primitive across separate `.from()` calls, so the atomic
+order→paid + listing→sold write (§8.1's second HARD RULE, §10 Epic D2 AC3)
+has to be a single Postgres function call. Every function in this schema
+is `PUBLIC`-executable by Postgres's own default unless explicitly
+revoked — confirmed empirically when `search_listings` was built (Prompt
+10's migration comment) and re-confirmed here (a plain `anon`-role RPC
+call against `mark_order_paid` returns `permission denied for function
+mark_order_paid` only *because* the REVOKE below exists). Not `SECURITY
+DEFINER`: the only intended caller is the webhook route via the
+service-role client, which already has full table access with no RLS
+applied — no privilege elevation is needed *inside* the function, only
+outside it (who may call it at all). `revoke execute on function
+mark_order_paid(uuid) from public, anon, authenticated; grant execute ...
+to service_role;` is not decorative — without it, any authenticated
+client could call this RPC directly via the Supabase JS SDK and transition
+an arbitrary order to `paid`, trivially violating the HARD RULE this
+entire prompt exists to enforce. Verified live before writing a single
+line of the route handler: the grant-restricted state was confirmed via
+`information_schema.routine_privileges` and by an actual rejected `anon`
+RPC call, not assumed from reading the migration.
+**Revisit:** No — this is the correct, permanent shape. If a future prompt
+ever needs a second caller (e.g. an admin action that also transitions
+orders), grant `EXECUTE` to that specific, narrow context — never widen
+back to the Postgres default.
