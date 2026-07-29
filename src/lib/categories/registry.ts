@@ -27,6 +27,7 @@ import {
   GADGETS_ALLOWED_CONDITIONS,
   GADGETS_MIN_PHOTOS,
   GADGETS_USAGE_INDICATOR_FIELDS,
+  GADGETS_ADMIN_ONLY_ATTRIBUTE_FIELDS,
   gadgetsAttributesSchema,
   SCHEMA_VERSION as GADGETS_SCHEMA_VERSION,
 } from "./schemas/gadgets";
@@ -74,6 +75,13 @@ export type CategoryConfig = {
   schemaVersion: number;
   /** PRD §6.3's usage indicator field names — UI reveal-on-`used` only. */
   usageIndicatorFields: readonly string[];
+  /**
+   * Attribute field names that must never reach a non-admin listing-detail
+   * response (PRD §7.1/§9.1 — e.g. Gadgets' `imei_last_6`). Registry-driven
+   * so the listing-detail query strips these generically, by name, rather
+   * than a per-category switch (§12.3).
+   */
+  adminOnlyAttributeFields: readonly string[];
 };
 
 /** PRD §6.4: all five launch categories are `listable`; only Beauty is `browsable`. */
@@ -89,6 +97,7 @@ export const categoryRegistry: Record<CategorySlug, CategoryConfig> = {
     schema: beautyAttributesSchema,
     schemaVersion: BEAUTY_SCHEMA_VERSION,
     usageIndicatorFields: BEAUTY_USAGE_INDICATOR_FIELDS,
+    adminOnlyAttributeFields: [],
   },
   [FASHION_SLUG]: {
     slug: FASHION_SLUG,
@@ -101,6 +110,7 @@ export const categoryRegistry: Record<CategorySlug, CategoryConfig> = {
     schema: fashionAttributesSchema,
     schemaVersion: FASHION_SCHEMA_VERSION,
     usageIndicatorFields: FASHION_USAGE_INDICATOR_FIELDS,
+    adminOnlyAttributeFields: [],
   },
   [GADGETS_SLUG]: {
     slug: GADGETS_SLUG,
@@ -113,6 +123,7 @@ export const categoryRegistry: Record<CategorySlug, CategoryConfig> = {
     schema: gadgetsAttributesSchema,
     schemaVersion: GADGETS_SCHEMA_VERSION,
     usageIndicatorFields: GADGETS_USAGE_INDICATOR_FIELDS,
+    adminOnlyAttributeFields: GADGETS_ADMIN_ONLY_ATTRIBUTE_FIELDS,
   },
   [PERSONAL_CARE_SLUG]: {
     slug: PERSONAL_CARE_SLUG,
@@ -125,6 +136,7 @@ export const categoryRegistry: Record<CategorySlug, CategoryConfig> = {
     schema: personalCareAttributesSchema,
     schemaVersion: PERSONAL_CARE_SCHEMA_VERSION,
     usageIndicatorFields: PERSONAL_CARE_USAGE_INDICATOR_FIELDS,
+    adminOnlyAttributeFields: [],
   },
   [HOME_GOODS_SLUG]: {
     slug: HOME_GOODS_SLUG,
@@ -137,6 +149,7 @@ export const categoryRegistry: Record<CategorySlug, CategoryConfig> = {
     schema: homeGoodsAttributesSchema,
     schemaVersion: HOME_GOODS_SCHEMA_VERSION,
     usageIndicatorFields: HOME_GOODS_USAGE_INDICATOR_FIELDS,
+    adminOnlyAttributeFields: [],
   },
 };
 

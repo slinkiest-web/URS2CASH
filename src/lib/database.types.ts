@@ -1,24 +1,3 @@
-/**
- * Generated Supabase database types.
- *
- * CLI-generated (finally — Docker is now available). Produced by:
- *   npx supabase gen types typescript --local > src/lib/database.types.ts
- * against every migration through 20260729070438_search_listings_function.sql.
- *
- * This replaces the hand-authored version that stood in for it through
- * Prompts 2–9 (Docker was unavailable in every earlier session). The prior
- * verification pass (see docs/HANDOFF.md Prompt 9's predecessor session)
- * diffed the hand-authored file against a real CLI-generated snapshot and
- * found every table's Row/Insert/Update shape matched field-for-field; the
- * only real differences were view-column nullability (views mark every
- * column nullable; the hand-authored version assumed the base table's
- * NOT NULL survived the view) and a smaller `Relationships` array (missing
- * duplicate entries pointing at `_public` views alongside base tables) —
- * both now correctly present below.
- *
- * Regenerate and commit alongside every future migration (PRD §12.1 HARD
- * RULE). Do not hand-edit this file.
- */
 export type Json =
   | string
   | number
@@ -715,6 +694,7 @@ export type Database = {
           completed_sales_count: number | null
           created_at: string | null
           display_name: string | null
+          dispute_upheld_count: number | null
           handle: string | null
           id: string | null
           rating_average: number | null
@@ -727,6 +707,7 @@ export type Database = {
           completed_sales_count?: number | null
           created_at?: string | null
           display_name?: string | null
+          dispute_upheld_count?: number | null
           handle?: string | null
           id?: string | null
           rating_average?: number | null
@@ -739,6 +720,7 @@ export type Database = {
           completed_sales_count?: number | null
           created_at?: string | null
           display_name?: string | null
+          dispute_upheld_count?: number | null
           handle?: string | null
           id?: string | null
           rating_average?: number | null
@@ -986,3 +968,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+

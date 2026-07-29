@@ -1,8 +1,10 @@
 # Urs2Cash — Project Status
 
-**As of:** 2026-07-29
-**Sources:** `docs/urs2cash-prd.md` (v2.0, locked), `docs/HANDOFF.md` (Prompts 1–10), `docs/DECISIONS.md` (#1–43), `docs/KNOWN_ISSUES.md` (#1–24), repo state at commit `6538385` (`main`, pushed to `origin/main`).
-**Verified for this report:** `npm run typecheck`, scoped `eslint "src/**/*.{ts,tsx}"`, `npm run test` (99/99), `npm run build` all clean. `git status` clean, `main` up to date with `origin/main`.
+**As of:** 2026-07-29 (Prompt 11)
+**Sources:** `docs/urs2cash-prd.md` (v2.0, locked), `docs/HANDOFF.md` (Prompts 1–11), `docs/DECISIONS.md` (#1–50), `docs/KNOWN_ISSUES.md` (#1–24, several resolved/superseded by Prompt 11), repo state as of Prompt 11's uncommitted changes (`main`, one prior local-only commit `da5c0d4` also not yet pushed — see note below).
+**Verified for this report:** `npm run typecheck`, scoped `eslint "src/**/*.{ts,tsx}"`, `npm run test` (107/107), `npm run build` all clean. Two new migrations applied via `npx supabase db reset` and live-verified (not just syntax-checked) — see §3.
+
+**Uncommitted work note:** as of this report, both the `da5c0d4` docs-reorganisation commit (from the prior session) and all of Prompt 11's changes are local-only, not yet committed or pushed. Commit/push only on explicit instruction, per this project's standing git-safety norms.
 
 This is a handoff snapshot, not a living doc — re-verify anything load-bearing before acting on it.
 
@@ -33,13 +35,13 @@ Ten "prompts" (build sessions) have shipped so far, each logged in full in `docs
 | **B4 — Manage listings** | Mostly built | `/dashboard/listings`, `updateListing`/`removeListing` (both now also scan for contact details on every edit), immutable-field enforcement, blocking-order check. **Gap:** no `view_count` (schema never added it — issue #22). |
 | **C1 — Category browse** | **Built (Prompt 10)** | `/c/[slug]`, Server Component, 404s on `browsable=false` or unknown slug, price/condition/registry-attribute filters with state entirely in the URL. |
 | **C2 — Search** | **Built (Prompt 10)** | `/search`, full-text via a new `search_listings` SQL function over the §7.1 tsvector index, cross-category, `browsable` never checked — verified live. |
-| **C3 — Listing detail** | **Not built — next up** | No `/l/[id]`. Every `ListingCard` already links there; the link 404s until this is built. |
-| **C4 — Seller public profile** | **Not built** | No `/s/[handle]`. Natural to build alongside C3 (shares the reputation-block logic). |
+| **C3 — Listing detail** | **Built (Prompt 11)** | `/l/[id]`, Server Component. Photo gallery with flaw-tagged labels, registry-driven generic attribute display (two-claims prominence, measurements sub-table, computed remaining-PAO), full condition definition text, seller reputation block, OG tags, `imei_last_6` stripped at the data layer. Reachable regardless of `browsable`; widened to also serve `sold` listings (new RLS policy). |
+| **C4 — Seller public profile** | **Not built — next up** | No `/s/[handle]`. The reputation query/component were built reusable in Prompt 11 specifically for this — import as-is, don't rebuild. |
 | **D — Purchase & escrow** | **Not built** | No checkout, no Paystack webhook route, no order state machine code (schema + triggers exist), no shipping/delivery/dispute/rating actions. |
 | **E — Admin** | **Not built** | No `/admin` routes, no admin server actions, no admin-role mechanism at all (Known Issue #12). |
 | **Moderation (§9.3)** | **Built (Prompt 9)** | Real Nigerian-phone/email/WhatsApp/Instagram/Telegram/URL detector, wired into listing create + edit. Rating-review scanning has no call site yet (`ratings.ts` action doesn't exist — Epic D6). |
 
-**Net:** the database schema is complete for the whole PRD and, as of the un-numbered session before Prompt 9, **actually verified against a live Postgres instance** — this is new since the last status report. The application layer now covers **Epic A (partial), Epic B (full except price guidance), moderation detection, and half of Epic C** (browse + search; listing detail + seller profile still missing). **Epics D and E have zero application code.**
+**Net:** the database schema is complete for the whole PRD and, as of the un-numbered session before Prompt 9, **actually verified against a live Postgres instance** — this is new since the last status report. The application layer now covers **Epic A (partial), Epic B (full except price guidance), moderation detection, and three-quarters of Epic C** (browse + search + listing detail; only seller public profile remains). **Epics D and E have zero application code.**
 
 ---
 
@@ -56,6 +58,8 @@ Seven migrations exist. Every one has been applied via `npx supabase db reset` a
 | `20260728134156_listing_photos_storage.sql` | `listing-photos` Storage bucket + RLS on `storage.objects` |
 | `20260729055455_grant_table_privileges.sql` | **The critical fix** — see below |
 | `20260729070438_search_listings_function.sql` | `search_listings()` SQL function backing Epic C2, using the existing tsvector index expression verbatim |
+| `20260729080000_profiles_public_dispute_rate.sql` | Adds `dispute_upheld_count` to `profiles_public` — Epic C3's reputation block needs it for dispute rate (Decision #44) |
+| `20260729080500_listings_select_sold.sql` | Widens the public `listings` SELECT policy to also allow `status = 'sold'`, not just `'published'` — required by Epic C3 AC6 (Decision #45) |
 
 **What "live-verified" actually means, concretely:**
 - The 5 seeded categories carry correct `listable`/`browsable`/`photo_min`/`allowed_conditions` (only Beauty browsable).
@@ -77,12 +81,15 @@ Seven migrations exist. Every one has been applied via `npx supabase db reset` a
 - **`browsable` gates the buyer category grid and nav ONLY** (§6.2) — search, "recently listed," and listing detail must never check it. Verified live in Prompt 10 by seeding a non-browsable-category listing and confirming it's absent from the grid but present in search results.
 - **Attribute filters on category pages are scoped to `enum`/`boolean` fields only** (Decision #42) — the only types that map to JSONB containment (`@>`), which is what the existing GIN index actually accelerates. Numeric range filters (e.g. battery health %) are out of scope until a different index shape exists.
 - **`database.types.ts` is now genuinely CLI-generated** (Decision #43) — never hand-edit it again; regenerate and commit alongside every future migration.
+- **Listing-detail attribute rendering is generic and field-name-keyed, never a category-slug switch** (Decision #47) — the two-claims rule (functional_status/cosmetic_grade prominence), remaining-PAO computation, and measurements-as-a-table all key off field names/kinds that recur verbatim across categories, not per-category branches.
+- **Admin-only attribute fields (e.g. Gadgets' `imei_last_6`) are stripped at the data-access layer via a registry-declared field list** (`adminOnlyAttributeFields`, Decision #46), not merely skipped at render time — they never enter the RSC payload at all.
+- **Public read access on `listings` now covers `status in ('published', 'sold')`, not just `'published'`** (Decision #45) — a real gap Epic C3 AC6 surfaced; every other status (draft/removed/suspended) stays non-public.
 
 ---
 
 ## 5. Known issues (see `docs/KNOWN_ISSUES.md` for the full list; several resolved since the last report)
 
-**Resolved since the last status report:** #1, #10 (hand-authored types → real CLI-generated), and the entire Docker-unavailable family (#1/#2/#3/#4/#8/#13/#16/#17/#18) via live verification. #24 (no global nav) is partially resolved — Prompt 10 built one, but it's buyer-facing only and still doesn't link to `/dashboard/listings`.
+**Resolved since the last status report:** #1, #10 (hand-authored types → real CLI-generated), and the entire Docker-unavailable family (#1/#2/#3/#4/#8/#13/#16/#17/#18) via live verification. #24 (no global nav) is partially resolved — Prompt 10 built one, but it's buyer-facing only and still doesn't link to `/dashboard/listings`. The former "`/l/[id]` doesn't exist" gap is now resolved (Prompt 11).
 
 **Still open, in rough priority order:**
 1. **No admin-role verification mechanism exists anywhere** (issue #12, Decision #20). Must land before any Epic E code is written — this is a schema decision (an admin claim/column) that deserves its own deliberate migration.
@@ -92,8 +99,10 @@ Seven migrations exist. Every one has been applied via `npx supabase db reset` a
 5. **`/dashboard/listings` still has no inbound nav link** (issue #24) — a global nav now exists (Prompt 10) but is buyer-facing only; needs a seller-facing link added.
 6. **Dynamic listing form only reveals `usageIndicatorFields` conditionally** (issue #20) — other conditionally-required fields always render once a category is picked. Server-side enforcement is complete; UX-only gap.
 7. **Numeric attribute range filtering is out of scope on category pages** (Decision #42) — not a defect, a documented scope boundary tied to the current GIN index shape.
-8. **`/l/[id]` doesn't exist** — every listing card already links there; every click currently 404s. This is the very next thing to build, not a bug.
-9. **No edge caching (`revalidate`) on the new discovery pages** — `createClient()`'s use of `cookies()` forces dynamic rendering regardless of any `revalidate` export; genuine caching would need a separate non-cookie-bound anon client, a real architecture change not taken on as a side effect of Prompt 10.
+8. **No edge caching (`revalidate`) on any discovery/detail page** — `createClient()`'s use of `cookies()` forces dynamic rendering regardless of any `revalidate` export; genuine caching would need a separate non-cookie-bound anon client, a real architecture change not taken on as a side effect of Prompt 10 or 11.
+9. **A seller can preview her own `draft` listing at `/l/[id]`** (new, Prompt 11) — an incidental consequence of `listings_select_own` RLS letting an owner read any status of her own row. Not harmful (no purchase path exists to expose), not asked for, just worth knowing.
+10. **Per-listing hygiene notices (e.g. flagging Beauty's hygiene-sensitive product types specifically) were not built** (new, Prompt 11, Decision #49) — narrowed to what's registry-derivable; Personal Care's category-wide "used disallowed" policy is already structurally visible via its condition selector.
+11. **`support_contact_opened`'s client-side firing was read for correctness, not exercised in a real browser** (new, Prompt 11) — no browser-automation tooling was available in this environment to click the link and observe the console log.
 
 ---
 
@@ -101,11 +110,10 @@ Seven migrations exist. Every one has been applied via `npx supabase db reset` a
 
 In dependency order:
 
-1. **Listing detail (`/l/[id]`) — Epic C3.** The immediate next prompt, already flagged as such in `docs/HANDOFF.md`'s Prompt 10 entry. Photo gallery (flaw-tagged photos labeled), all attributes rendered generically from the registry (no hardcoding per category), condition shown with full definition text, seller reputation block (completed sales / member-since / rating-average-if-≥3-ratings / dispute-rate-if-≥5-sales, "New seller" rendering below those floors), Open Graph tags (load-bearing for pre-browsable categories' shareability). This also unblocks every `ListingCard` link built in Prompt 10.
-2. **Seller public profile (`/s/[handle]`) — Epic C4.** Natural to build right alongside C3: shares the same reputation-block rendering logic.
-3. **Admin-role mechanism** (Known Issue #12) — needed before any Epic E work; land it as its own deliberate migration.
-4. **Epic D (purchase & escrow)** — the largest remaining surface and the one the PRD's core success metrics (listing-to-sale conversion, dispute rate) depend on. Schema and triggers already exist; checkout, the Paystack webhook, order-state-machine actions, and dispute/rating flows do not.
-5. Close the TOCTOU race (#19/#23) and the orders-column-privacy gap (#14) opportunistically while touching those areas in Epic D, rather than as standalone work.
-6. **B3 (price guidance)**, **view_count (#22)**, and the seller-facing nav link (#24) are small, self-contained, and can slot in whenever convenient.
+1. **Seller public profile (`/s/[handle]`) — Epic C4.** The immediate next prompt. AC2 needs a query shaped like `getRecentlyListed` (Prompt 10) but scoped to one seller, never checking `browsable`. AC3's reputation block is already done — `src/lib/reputation/get-seller-reputation.ts` and `src/components/reputation/seller-reputation-block.tsx` (Prompt 11) were built reusable specifically for this; import as-is, don't rebuild.
+2. **Admin-role mechanism** (Known Issue #12) — needed before any Epic E work; land it as its own deliberate migration.
+3. **Epic D (purchase & escrow)** — the largest remaining surface and the one the PRD's core success metrics (listing-to-sale conversion, dispute rate) depend on. Schema and triggers already exist; checkout, the Paystack webhook, order-state-machine actions, and dispute/rating flows do not.
+4. Close the TOCTOU race (#19/#23) and the orders-column-privacy gap (#14) opportunistically while touching those areas in Epic D, rather than as standalone work.
+5. **B3 (price guidance)**, **view_count (#22)**, and the seller-facing nav link (#24) are small, self-contained, and can slot in whenever convenient.
 
 Rating-review contact-detail scanning (§7.1 HARD RULE, Epic D6) has a documented TODO in `src/lib/moderation/contact-detector.ts`'s module docstring specifying exactly how to wire it once `submitRating`/`src/lib/actions/ratings.ts` exists — don't rebuild this from scratch when Epic D6 lands.

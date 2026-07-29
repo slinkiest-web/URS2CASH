@@ -18,6 +18,14 @@ export const GADGETS_MIN_PHOTOS = 5;
  * by the generic form, never hidden.
  */
 export const GADGETS_USAGE_INDICATOR_FIELDS = ["cosmetic_grade"] as const;
+/**
+ * PRD §7.1/§9.1: `imei_last_6` is buyer/seller-visible nowhere — it exists
+ * only to let a moderator or the seller herself confirm device identity, not
+ * for public listing display. Registry-driven so the listing-detail query
+ * can strip admin-only attribute fields generically, by name, without a
+ * per-category switch (docs/DECISIONS.md, Prompt 11).
+ */
+export const GADGETS_ADMIN_ONLY_ATTRIBUTE_FIELDS = ["imei_last_6"] as const;
 
 export const GADGETS_PRODUCT_TYPES = [
   "phone",

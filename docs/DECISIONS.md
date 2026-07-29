@@ -616,3 +616,134 @@ didn't attempt to replicate by hand.
 **Revisit:** No — this is now the real, CLI-generated file. Regenerate and
 commit it alongside every future migration, per the README's own HARD
 RULE; never hand-edit it again.
+
+---
+
+## From Prompt 11
+
+### 44. `profiles_public` widened to expose `dispute_upheld_count`
+**Why:** the listing-detail reputation block (§10 Epic C3 AC5) needs
+dispute rate (`dispute_upheld_count / completed_sales_count`, shown only
+once `completed_sales_count >= 5`), and the view didn't carry the numerator.
+Decision #1 (Prompt 2) deliberately excluded it at the time but explicitly
+named this exact moment in its own "Revisit" note: "When Epic C … is
+built — confirm the view's column list covers what C3 AC5 / C4 need." New
+migration `20260729080000_profiles_public_dispute_rate.sql` adds the column
+via `create or replace view`, appended at the end (Postgres rejects
+reordering/inserting a column before the view's existing last column —
+hit this the first time and fixed the column order). Same gating pattern as
+`rating_count`/`rating_average`: the raw count is exposed; the `>=5`
+threshold is applied by the caller (`SellerReputationBlock`), not the view.
+**Revisit:** No.
+
+### 45. `listings` RLS widened to allow public read of `status = 'sold'`, not just `'published'`
+**Why:** discovered while building this prompt, not asked for by the task.
+§10 Epic C3 AC6 requires "sold listings display as sold and are not
+purchasable" — which only makes sense if a buyer can still reach a sold
+listing's detail page (e.g. an old shared link). The original
+`listings_select_published` policy (Prompt 4) only allowed
+`status = 'published'`, so a sold listing would 404 for every non-owner,
+contradicting AC6's literal requirement. New migration
+`20260729080500_listings_select_sold.sql` replaces the policy with one
+allowing `status in ('published', 'sold')`. No other status (draft,
+removed, suspended) is public — verified live: a freshly inserted `draft`
+listing is invisible to the anon client and 404s on `/l/[id]`.
+**Revisit:** No, unless a future status value needs the same treatment —
+apply the same reasoning (does a buyer legitimately need to reach this
+listing's detail page after the fact?), not a blanket relaxation.
+
+### 46. `adminOnlyAttributeFields` added to the category registry, populated only for Gadgets (`imei_last_6`)
+**Why:** §7.1/§9.1 require `imei_last_6` never reach a non-admin response.
+Rather than a hardcoded field-name check in the listing-detail query (which
+would be exactly the kind of per-category special case §12.3 forbids),
+it's registry metadata, same shape as `usageIndicatorFields` (Decision
+#33) — `getListingDetail` strips every category's declared admin-only
+fields generically, by name, before the attributes object leaves the data
+layer. Stripped at the query layer, not just skipped at render time, so it
+never enters the RSC payload at all, not only the visible HTML. Verified
+live: neither `imei` nor the seeded IMEI value appears anywhere in the
+rendered page's HTML or RSC flight payload.
+**Revisit:** Yes, if a future category attribute needs the same treatment —
+add it to that category's `..._ADMIN_ONLY_ATTRIBUTE_FIELDS` export and
+registry entry; the stripping mechanism itself needs no changes.
+
+### 47. Generic, field-name-keyed attribute display (`src/lib/categories/attribute-display.ts`) — no category switch
+**Why:** §10 Epic C3 AC3 explicitly fails if rendering is hardcoded per
+category, but §6.4.3's two-claims rule (functional_status/cosmetic_grade
+equal prominence to condition) and §6.4.1/§6.4.4's remaining-PAO
+computation are real, category-specific-sounding requirements. Resolved by
+keying every special case on a *field name* or *field kind* that recurs
+verbatim across categories rather than on category slug: `functional_status`
+is spelled identically in Gadgets (§6.4.3) and Home Goods (§6.4.5);
+`pao_months`/`opened_at_date` are spelled identically in Beauty (§6.4.1)
+and Personal Care (§6.4.4); any object-kind field (Fashion's
+`measurements_cm`) gets its own sub-table with the unit suffix inherited
+from the parent field's own name (`_cm`) rather than needing it on each
+sub-key. A real bug here, caught by live verification rather than by
+inspection: the first version derived a sub-value's unit from the
+*sub-field's* name (`chest`, `length`, …), which don't carry a `_cm`
+suffix themselves — only the parent object does — so measurements
+rendered as bare unlabelled numbers until fixed to inherit the parent's
+suffix.
+**Revisit:** No, unless a sixth category introduces a field name that
+collides with one of these generic rules but means something different —
+unlikely given the registry's existing naming discipline, but worth a
+second look if it happens.
+
+### 48. `referrer_surface` inferred from the `Referer` request header, not a `?ref=` query param threaded through every `ListingCard` caller
+**Why:** `listing_viewed`'s `referrer_surface` property (§3.5) needs to
+know which surface linked to this listing. `ListingCard` is used from three
+existing call sites (category page, search, home page's recently-listed)
+plus, per Epic C4 next prompt, a fourth (seller profile) — threading a
+query param through all of them would touch files well outside this
+prompt's stated scope ("C3 only"). Reading `headers().get("referer")` in
+the page itself and mapping known paths (`/`, `/c/*`, `/search`, `/s/*`,
+`/l/*`) to surface names achieves the same property with zero changes to
+`ListingCard` or any of its callers. Verified live: a request with
+`Referer: /c/beauty` logs `referrer_surface: "category_page"`; a bare
+request logs `"direct"`.
+**Revisit:** If a future prompt wants a more precise signal than the
+Referer header provides (e.g. distinguishing "recently listed on the home
+page" from "the home page's category grid"), that's the point to switch to
+an explicit `?ref=` param — not a sign this decision was wrong at the time.
+
+### 49. Support route built as a `mailto:` link, and the task's "known_faults"/"hygiene notices" wording narrowed to what the schema actually models
+**Why, support route:** §5.2's out-of-scope list is explicit: "In app
+support ticketing. The support route is a contact link in MVP" — so a
+`mailto:` link (new `NEXT_PUBLIC_SUPPORT_EMAIL` env var) is the correct
+MVP shape, not a ticket form. A small `"use client"` component
+(`SupportLink`) exists solely to fire `support_contact_opened` on click;
+every other part of this page stays a Server Component.
+**Why, "known_faults":** no category schema has a field by this name —
+closest match is the shared `condition_notes` field (required, ≥20 chars,
+on `used`), which is where a seller would actually describe faults.
+Rendered in full, no truncation, no line-clamp, under its own "Seller's
+notes on condition" heading.
+**Why, "hygiene notices":** no persisted hygiene-notice field exists in
+the data model either. Narrowed to what's actually generic and
+registry-derivable: nothing was added beyond the condition/attribute
+rendering already built, since Personal Care's category-wide "used is
+disallowed" policy is already visible structurally (its condition selector
+has no third option, and `PERSONAL_CARE_ALLOWED_CONDITIONS` excludes
+`used` — Decision from Prompt 3). A per-listing badge keyed on Beauty's
+hygiene-sensitive product types (mascara, lipstick, …) was considered and
+deliberately not built: it isn't in this prompt's VERIFICATION list, the
+task's own wording doesn't name a field to derive it from, and inventing
+one would risk exactly the kind of unrequested per-category logic §12.3
+warns against.
+**Revisit:** the hygiene-notice narrowing, yes, if a future prompt wants an
+explicit per-listing hygiene badge — that's a deliberate scope addition
+with its own registry field (following Decision #46's pattern), not a
+correction of this one.
+
+### 50. Seller reputation built as two reusable modules, not inlined into the listing-detail page
+**Why:** the task itself asked for this — Epic C4 (seller public profile,
+next prompt) needs the identical reputation block per its own AC3
+("Shows the reputation block per C3 AC5"). `src/lib/reputation/
+get-seller-reputation.ts` (the query, wrapped in React's `cache()`) and
+`src/components/reputation/seller-reputation-block.tsx` (the
+presentation, a pure Server Component taking a `SellerReputation` prop)
+have zero listing-specific knowledge — Prompt 12 imports both as-is.
+**Revisit:** No, unless C4 surfaces a rendering difference between the two
+surfaces not anticipated here — in which case extend the component with an
+explicit prop, don't fork it.
