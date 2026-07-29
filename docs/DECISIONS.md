@@ -536,3 +536,39 @@ externally-owned object) with `useRouter().push()` from `next/navigation`
 draft save.
 **Revisit:** No, unless a future Next/React-Compiler version changes how
 it wants one-time external-state hydration to be written.
+
+---
+
+## From Prompt 9
+
+### 40. "Raised to the top of the moderation queue" needed no new column
+**Why:** §9.3 point 3 says a detection raises the listing "to the top of the
+moderation queue," which reads like it implies a priority flag on
+`moderation_flags`. But Epic E1 AC1 (the future admin queue, not yet built)
+already specifies "Lists open `moderation_flags` newest first" — a freshly
+inserted flag is the top of a newest-first list purely by virtue of being
+newest, with no additional column required. Adding an invented
+`priority`/`is_priority` boolean would duplicate what `created_at` +
+newest-first ordering already gives for free, and §7.1's `moderation_flags`
+table doesn't define any such column.
+**Revisit:** Only if Epic E1 is built with different ordering than "newest
+first" (e.g. a genuinely separate priority lane for auto-detected flags vs.
+user reports) — re-read this decision against whatever E1's actual spec
+says at that point.
+
+### 41. Contact-detail scanning fires on every `createListing`/`updateListing` call, drafts and repeat edits included, with no deduplication
+**Why:** §9.3 says text is "scanned at submission" without narrowing that to
+publish only — a draft save is still a submission of listing text, and
+catching leakage as early as possible is strictly better under a
+recall-favoring design. For edits, a seller could in principle trigger a new
+flag on the same listing on every save if the offending text persists
+unchanged; deliberately not deduplicated against prior flags, since a
+repeat detection is itself the signal §9.3 point 5 describes ("suspends the
+listing on repeat offence") — collapsing repeats into one flag would erase
+exactly the evidence a moderator needs to tell a one-off slip from a
+repeat offender.
+**Revisit:** No, unless a future prompt's moderation-queue design
+specifically wants deduplicated flags (e.g. one open flag per listing,
+updated in place) rather than one row per detection event — that would be
+a deliberate scope change to the queue's data model, not a fix to this
+prompt's behavior.

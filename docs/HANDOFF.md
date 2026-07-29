@@ -266,3 +266,32 @@ type UpdateListingInput = {
 ```
 
 See `docs/DECISIONS.md` #35–#39 for this prompt's design choices.
+
+---
+
+## Prompt 9 — Contact-detail detection (§9.3), wired into listing creation/edit
+
+**Completed:**
+- `src/lib/moderation/contact-detector.ts`: `scanForContactDetails(text)` replaces Prompt 7's always-false stub with real detection, in priority order (first match wins — one detection per scan, matching Epic B1 AC9b's "exactly one `moderation_flags` row"): phone → email → whatsapp → instagram → telegram → bare `@handle` → generic URL.
+  - Phone detection handles every format §9.3 names by name: `+234`, `0`-prefixed local, bare (no leading 0, e.g. `803 123 4567`), spaced/dashed/dotted grouping, `O`/`o`/`I`/`i`/`L`/`l` letter-substitution for `0`/`1`, and fully spelled-out digits (`"zero eight zero three one two three four five six seven"`, requiring a run of ≥7 consecutive number-words to avoid firing on ordinary prose that mentions a couple of quantities).
+  - A candidate digit/letter-substitution regex is deliberately broad (the recall layer, per §9.3's explicit recall-over-precision mandate); `isNigerianPhoneShape()` — exact 11-digit (`0`-prefixed), 13-digit (`234`-prefixed), or 10-digit (bare `7`/`8`/`9`-prefixed) — is the actual precision filter, applied after separators are stripped and substitute letters are normalized back to digits.
+- `src/lib/moderation/flag-contact-detection.ts`: `flagContactDetection({ listingId, categorySlug, detection })` — the shared post-write step. Inserts a `moderation_flags` row (`source: 'auto_contact_detect'`, carrying `pattern_type`/`matched_text`) via the **service-role client**, then fires `contact_detail_flagged`. Never called from a path that can still fail the underlying write.
+- `src/lib/actions/listings.ts`: both `createListing` and `updateListing` now scan `title`/`description`/`condition_notes` and call `flagContactDetection` after their respective inserts/updates succeed — never before, and never gating the result either way. Wired into both draft saves and publishes (a draft is still a submission of listing text), and into every edit, not just creation.
+- Test battery: `src/lib/moderation/__tests__/contact-detector.test.ts` — 29 tests: every phone format/obfuscation named in §9.3 explicitly, each other channel type, and 8 clean-prose cases (ordinary descriptions, short prices, spec lists, scattered non-consecutive number words, dotted dates, percentages) that must not false-positive.
+
+**Verified:**
+- `npx tsc --noEmit`, `npx eslint "src/**/*.{ts,tsx}"` (the bare `npm run lint` invocation now also scans `.agents/skills/gstack/` — vendored, gitignored third-party tooling not part of this project's scaffold — and fails on ~900 pre-existing errors there unrelated to any prompt in this project; confirmed via `git stash` that this failure exists identically with none of this prompt's changes applied. Scoped to `src/**` as prior prompts already did), `npx vitest run` (99/99 — 70 unchanged + 29 new), `npm run build` all pass clean.
+- **End-to-end, against the live local Postgres instance** (not just unit tests): scanned `"...Call 0803 123 4567 if you want it faster..."`, inserted the resulting listing via the service-role client, and confirmed all three PRD-mandated outcomes together — the listing's `status` was `published` (never blocked), exactly one `moderation_flags` row existed for that listing afterward (`source: auto_contact_detect`, `pattern_type: phone`, `matched_text: "0803 123 4567"`), and the `contact_detail_flagged` payload was correct. This is Epic B1 AC9b, verified by execution, not just by unit test.
+- Confirmed by test: a phone number is still detected correctly even when immediately adjacent to ordinary English words containing `o`/`i`/`l` (e.g. `"...4567 if you want..."`, `"Call 0803..."`) — the initial implementation had a real bug here (see below) that the boundary-anchored regex fixes.
+
+**A real bug caught during testing, not just at review:** the first version of the phone candidate regex had no token-boundary protection. Since `O`/`I`/`L` are simultaneously valid phone-obfuscation letters *and* ordinary English letters, an unanchored greedy match would absorb a stray letter from an adjacent word across a space — e.g. the `i` in `"...4567 if you..."` or the `ll` in `"Call 0803..."` — into the candidate. That stray letter then got letter-substituted into the digit string during normalization, corrupting the shape check and producing a false *negative* on real, valid phone numbers embedded in ordinary sentences. Fixed with `(?<![a-zA-Z0-9])`/`(?![a-zA-Z0-9])` boundary assertions forcing the match to snap to genuine token edges. Caught by the test battery, not by inspection — the first draft's tests failed on exactly the realistic cases (a phone number followed by "if", preceded by "Call") that prose actually produces.
+
+**Known gap, flagged rather than silently accepted:**
+- "Raised to the top of the moderation queue" (§9.3 point 3) needed no schema change — `moderation_flags` has no priority column, and none was added. Epic E1 AC1 (not yet built) already specifies the future admin queue lists flags "newest first," which is sufficient: a freshly created flag is the top of a newest-first list by construction. See `docs/DECISIONS.md` #40.
+
+**Not wired (documented, not built — no action exists yet):**
+- Rating `review` text scanning (§7.1 HARD RULE, Epic D6/prompt 18) has no call site yet because `src/lib/actions/ratings.ts` doesn't exist. A detailed TODO in `contact-detector.ts`'s module docstring specifies exactly what the future `submitRating` call site must do (scan `review`, flag via the service-role client on a hit, fire the event, never block) — mirroring the shape already proven out in `listings.ts`.
+
+**Next prompt should build:** buyer-facing browse and search (per this prompt's own brief) — category grids gated by `browsable`, search ungated across all `listable` categories.
+
+See `docs/DECISIONS.md` #40–#41 for this prompt's design choices.

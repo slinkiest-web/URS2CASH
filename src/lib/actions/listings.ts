@@ -6,6 +6,7 @@ import { checkListingLimitGate } from "@/lib/listings/check-limit-gate";
 import { hasBlockingOrder } from "@/lib/listings/has-blocking-order";
 import { listingLimitMessage } from "@/lib/listings/limits";
 import { scanForContactDetails } from "@/lib/moderation/contact-detector";
+import { flagContactDetection } from "@/lib/moderation/flag-contact-detection";
 import { track } from "@/lib/analytics/events";
 import { ok, err, type Result } from "@/lib/result";
 import type { Json } from "@/lib/database.types";
@@ -72,13 +73,12 @@ export async function createListing(input: CreateListingInput): Promise<Result<{
     }
   }
 
-  // §9.3: flags, never blocks. Real detector lands in a dedicated prompt.
-  // TODO(prompt 9): scan title/description/condition_notes for contact
-  // details; on a hit, insert a moderation_flags row (source
-  // auto_contact_detect, carrying pattern_type/matched_text), raise the
-  // listing to the top of the moderation queue, and fire
-  // contact_detail_flagged. Submission must still publish either way.
-  scanForContactDetails(`${data.title} ${data.description} ${data.conditionNotes ?? ""}`);
+  // §9.3 HARD RULE: flags, never blocks — scanned here, before the write,
+  // but the resulting moderation_flags row/event only fire below, after the
+  // insert succeeds (flagContactDetection needs the new listing's id).
+  const contactDetection = scanForContactDetails(
+    `${data.title} ${data.description} ${data.conditionNotes ?? ""}`
+  );
 
   const { data: categoryRow } = await supabase
     .from("categories")
@@ -114,6 +114,16 @@ export async function createListing(input: CreateListingInput): Promise<Result<{
   if (insertError || !listing) {
     return err("insert_failed", "Could not save your listing. Try again.");
   }
+
+  // §9.3 HARD RULE: the write above has already succeeded — this can only
+  // ever add a flag alongside that success, never affect it. Runs for
+  // drafts too: a draft is still a submission of listing text, and catching
+  // leakage as early as possible is strictly better than waiting for publish.
+  await flagContactDetection({
+    listingId: listing.id,
+    categorySlug: data.categoryConfig.slug,
+    detection: contactDetection,
+  });
 
   // §10 Epic B1 AC10: published immediately, no approval step. AC13: fires
   // with every §3.5 property, including the trigger-assigned
@@ -230,6 +240,15 @@ export async function updateListing(input: UpdateListingInput): Promise<Result<v
 
   const data = validation.data;
 
+  // §9.3 HARD RULE: scanned on every edit, same as at creation — never a
+  // gate. The resulting flag/event only fire below, after the update
+  // succeeds. Not deduplicated against prior flags on the same listing: a
+  // repeat detection across edits is itself a legitimate signal (§9.3 point
+  // 5 — "suspends the listing on repeat offence").
+  const contactDetection = scanForContactDetails(
+    `${data.title} ${data.description} ${data.conditionNotes ?? ""}`
+  );
+
   // §5.4: the cap only ever gates an actual publish transition, never an
   // edit to an already-published listing and never a draft save.
   let nextStatus = listing.status;
@@ -284,6 +303,12 @@ export async function updateListing(input: UpdateListingInput): Promise<Result<v
   if (updateError || !updated) {
     return err("update_failed", "Could not save your listing. Try again.");
   }
+
+  await flagContactDetection({
+    listingId: input.listingId,
+    categorySlug: data.categoryConfig.slug,
+    detection: contactDetection,
+  });
 
   if (nextStatus === "published" && listing.status === "draft") {
     track("listing_published", {
