@@ -329,3 +329,5 @@ See `docs/DECISIONS.md` #40–#41 for this prompt's design choices.
 **Next prompt should build:** listing detail (`/l/[id]`) — Epic C3, the primary purchase-decision surface (photos, all attributes rendered generically from the registry, condition definition text, seller reputation block, Open Graph tags load-bearing for pre-browsable categories per AC7).
 
 See `docs/DECISIONS.md` #42–#43 for this prompt's design choices.
+
+Committed as `6538385` and pushed to `origin/main`. `docs/PROJECT_STATUS.md` reflects the full state as of this prompt — read it first in a fresh session before starting Prompt 11.
