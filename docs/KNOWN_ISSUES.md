@@ -54,7 +54,16 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
    Listing publish (Epic B) and checkout (Epic D) don't exist yet, so there is
    nothing to gate. Not a bug — just sequencing. Revisit when those flows are
    built to ensure they check email-confirmation status.
-   **Status:** open, blocked on Epic B/D.
+   **Status:** partially RESOLVED (Prompt 13). `initiateCheckout` now checks
+   `user.email_confirmed_at` and rejects checkout for an unconfirmed email
+   (docs/DECISIONS.md #56) — though empirically, this project's own
+   `config.toml` (`enable_confirmations = true`) already blocks sign-in
+   entirely pre-confirmation, so the check is currently unreachable in
+   practice; kept as defense-in-depth and to satisfy the AC's literal text.
+   `createListing` (Epic B, Prompt 7) still has no equivalent check — still
+   open on the publish half, though for the same reason likely unreachable
+   there too. Not fixed in Prompt 13, since it wasn't this prompt's action to
+   touch.
 
 ## From Prompt 4
 
@@ -232,3 +241,43 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     a seller-dashboard link, since neither this prompt nor its predecessor
     scoped seller-facing nav. Revisit now that a nav exists to actually add
     a link to.
+
+## From Prompt 13
+
+25. **No scheduled job expires stale `pending` orders (§10 Epic D1 AC9).**
+    `/api/cron/expire-pending-orders` is still the empty Prompt-1 scaffold
+    directory — no route handler exists. A `pending` order whose Paystack
+    `initialize` call actually *succeeds* (unlike every case exercised in
+    this prompt's own verification, which had no real Paystack account) has
+    no automatic path back to `expired` if the buyer never completes
+    payment — the listing stays locked behind `orders_listing_id_active_unique`
+    (docs/DECISIONS.md #54) indefinitely. `initiateCheckout` itself only
+    covers the *synchronous* failure case (Paystack unreachable/misconfigured
+    at initialize time — Decision #55's delete-on-failure); an abandoned
+    payment after a successful `initialize` is a different case this issue
+    still covers.
+    **Status:** open. Was out of Prompt 13's stated scope ("checkout up to
+    Paystack initialize"); needed before Epic D1 is fully done.
+
+26. **`/orders/[id]` (the Paystack callback destination) doesn't exist yet.**
+    `initiateCheckout` passes `callback_url: ${appUrl}/orders/${order.id}`
+    to Paystack's `initialize` call — a real buyer completing a real payment
+    today would land on a 404. §10 Epic D2 AC7 ("reads order status and
+    displays it... fails if the callback page writes any state") is the
+    actual spec for this page.
+    **Status:** open, explicitly Prompt 14's scope per its own task brief.
+
+27. **No live end-to-end test of a successful Paystack `initialize` → hosted payment page → `charge.success` webhook exists, and currently can't.**
+    This environment has no real Paystack account/test API keys. Every live
+    checkout verification in Prompt 13 exercises the code path up to and
+    including a *failed* `initialize` call (confirmed to fail gracefully,
+    clean up correctly, and never mark anything paid) — never a successful
+    one. `src/lib/paystack/index.ts`'s request-shape correctness (amount in
+    kobo, `metadata.order_id`, headers) is verified by direct code review
+    and by the fact that a real HTTPS round trip to `api.paystack.co`
+    completes and returns a structured `{status, message}` error response
+    (confirming connectivity and request well-formedness), not by a
+    successful transaction.
+    **Status:** open. Would need a real (test-mode) Paystack account to
+    close — not something available in this environment. Revisit if/when
+    one is provisioned.

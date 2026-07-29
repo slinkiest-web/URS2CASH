@@ -1,10 +1,10 @@
 /**
- * Money utilities (stub).
+ * Money utilities.
  *
  * HARD RULE (PRD §12.3): all money is integer kobo. This module owns every
- * conversion. No arithmetic on money outside this file.
- *
- * Implementation is filled in when the order/checkout flow is built.
+ * conversion. No arithmetic on money outside this file — `initiateCheckout`
+ * (Prompt 13) computes `commission_kobo`/`seller_payout_kobo` via
+ * `computeCommission` below, never inline.
  */
 
 /** Convert naira (number) to kobo (integer). Throws if input is fractional after rounding. */

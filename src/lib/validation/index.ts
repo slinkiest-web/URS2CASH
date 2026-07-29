@@ -50,6 +50,12 @@ export const nigerianStateSchema = z.enum([
 
 export type NigerianState = z.infer<typeof nigerianStateSchema>;
 
+/** E.164 phone format — used by both `profiles.phone` (optional) and `orders.delivery_phone` (required, Epic D1 AC2). */
+export const e164PhoneSchema = z
+  .string()
+  .trim()
+  .regex(/^\+[1-9][0-9]{7,14}$/, "Enter a phone number in E.164 format, e.g. +2348012345678.");
+
 /** Epic A1 AC1: password of 8 or more characters. Mirrors config.toml's minimum_password_length. */
 export const authCredentialsSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email address."),
@@ -64,11 +70,7 @@ export const profileUpdateSchema = z.object({
     .min(2, "Display name must be at least 2 characters.")
     .max(50, "Display name must be at most 50 characters."),
   bio: z.string().trim().max(280, "Bio must be at most 280 characters.").optional(),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^\+[1-9][0-9]{7,14}$/, "Enter a phone number in E.164 format, e.g. +2348012345678.")
-    .optional(),
+  phone: e164PhoneSchema.optional(),
   state: nigerianStateSchema,
   avatarUrl: z.string().trim().url("Enter a valid URL.").optional(),
 });

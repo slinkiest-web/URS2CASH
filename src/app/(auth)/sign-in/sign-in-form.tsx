@@ -2,11 +2,8 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import {
-  signInAction,
-  resendConfirmationAction,
-  type AuthFormState,
-} from "@/lib/actions/auth";
+import { signInAction, type AuthFormState } from "@/lib/actions/auth";
+import { ResendConfirmationForm } from "@/components/auth/resend-confirmation-form";
 import { Button } from "@/components/ui/button";
 
 const initialState: AuthFormState = {};
@@ -22,10 +19,6 @@ export function SignInForm({
     ...initialState,
     error: initialError,
   });
-  const [resendState, resendAction, resendPending] = useActionState(
-    resendConfirmationAction,
-    initialState
-  );
 
   return (
     <>
@@ -72,17 +65,7 @@ export function SignInForm({
       </form>
 
       {state.unconfirmedEmail ? (
-        <form action={resendAction} className="mt-4">
-          <input type="hidden" name="email" value={state.unconfirmedEmail} />
-          <Button type="submit" variant="outline" disabled={resendPending} className="w-full">
-            {resendPending ? "Resending…" : "Resend confirmation email"}
-          </Button>
-          {resendState.info ? (
-            <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">
-              {resendState.info}
-            </p>
-          ) : null}
-        </form>
+        <ResendConfirmationForm email={state.unconfirmedEmail} className="mt-4" buttonClassName="w-full" />
       ) : null}
 
       <p className="mt-6 text-sm text-zinc-600 dark:text-zinc-400">

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 import { getListingDetail } from "@/lib/discovery/get-listing";
 import { getSellerReputation } from "@/lib/reputation/get-seller-reputation";
 import { buildAttributeDisplay } from "@/lib/categories/attribute-display";
@@ -11,6 +12,8 @@ import { PhotoGallery } from "@/components/listing/photo-gallery";
 import { AttributeTable } from "@/components/listing/attribute-table";
 import { SupportLink } from "@/components/listing/support-link";
 import { SellerReputationBlock } from "@/components/reputation/seller-reputation-block";
+import { BuyForm } from "@/components/checkout/buy-form";
+import { ResendConfirmationForm } from "@/components/auth/resend-confirmation-form";
 import { formatKobo } from "@/lib/money";
 import { track } from "@/lib/analytics/events";
 
@@ -64,7 +67,13 @@ export default async function ListingDetailPage({ params }: { params: Promise<Pa
   const listing = await getListingDetail(id);
   if (!listing) notFound();
 
-  const [reputation, requestHeaders] = await Promise.all([getSellerReputation(listing.sellerId), headers()]);
+  const supabase = await createClient();
+  const [reputation, requestHeaders, userResult] = await Promise.all([
+    getSellerReputation(listing.sellerId),
+    headers(),
+    supabase.auth.getUser(),
+  ]);
+  const user = userResult.data.user;
 
   // §10 Epic C1 AC6 / §3.5: fired unconditionally on every render of this
   // page — there is no separate analytics task, the flow that owns the
@@ -99,6 +108,31 @@ export default async function ListingDetailPage({ params }: { params: Promise<Pa
             <span className="inline-block w-fit rounded bg-zinc-900 px-2 py-1 text-xs font-medium text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900">
               Sold
             </span>
+          ) : null}
+
+          {/* §10 Epic D1: the buy flow. A sold/removed/draft listing shows
+              nothing here — the "Sold" badge above already communicates
+              unavailability for the common case (a fresh page load after
+              the item sold); the rare case of an already-open tab racing
+              another buyer's purchase is caught server-side by
+              `initiateCheckout` itself (§10 Epic D1 AC8), not here. */}
+          {listing.status === "published" ? (
+            !user ? (
+              <div className="rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
+                <Link href={`/sign-in?redirectTo=/l/${listing.id}`} className="font-medium underline">
+                  Sign in to buy this item
+                </Link>
+              </div>
+            ) : user.id === listing.sellerId ? (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">This is your own listing.</p>
+            ) : !user.email_confirmed_at ? (
+              <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
+                <p className="text-zinc-700 dark:text-zinc-300">Confirm your email address before buying.</p>
+                <ResendConfirmationForm email={user.email ?? ""} />
+              </div>
+            ) : (
+              <BuyForm listingId={listing.id} priceKobo={listing.priceKobo} />
+            )
           ) : null}
 
           {/* §10 Epic C3 AC4: full definition text, not just the label. A

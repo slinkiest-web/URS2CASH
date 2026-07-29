@@ -1,10 +1,10 @@
 # Urs2Cash — Project Status
 
-**As of:** 2026-07-29 (Prompt 12 session)
-**Sources:** `docs/urs2cash-prd.md` (v2.0, locked), `docs/HANDOFF.md` (Prompts 1–12, plus two un-numbered sessions), `docs/DECISIONS.md` (#1–53), `docs/KNOWN_ISSUES.md` (#1–24, several resolved/superseded by Prompt 11), repo state pending commit on `main` at the time of writing (branch was at `62e16fd`, this session's changes committed after this report).
-**Verified for this report:** `npm run typecheck`, scoped `eslint "src/**/*.{ts,tsx}"`, `npm run test` (107/107), `npm run build` all clean. Prompt 12 added no migration (no schema change needed — every field/table it reads already existed). Live-verified against the running dev server and local Postgres, reusing Prompt 11's own seed sellers — see `docs/HANDOFF.md`'s Prompt 12 entry for the full verification log.
+**As of:** 2026-07-29 (Prompt 13 session)
+**Sources:** `docs/urs2cash-prd.md` (v2.0, locked), `docs/HANDOFF.md` (Prompts 1–13, plus two un-numbered sessions), `docs/DECISIONS.md` (#1–56), `docs/KNOWN_ISSUES.md` (#1–27, several resolved/superseded by Prompts 11–13), repo state pending commit on `main` at the time of writing (branch was at `fcc0b71`, this session's changes committed after this report).
+**Verified for this report:** `npm run typecheck`, scoped `eslint "src/**/*.{ts,tsx}"`, `npm run test` (116/116), `npm run build` all clean. One new migration this prompt (`20260729090000_orders_listing_active_unique.sql`), applied directly against the local Postgres instance and re-verified by hand, not just syntax-checked. Live-verified against the running dev server, the local database, and a real test buyer account through an actual browser session — see `docs/HANDOFF.md`'s Prompt 13 entry for the full verification log, including a real bug (a `"use server"` re-export crash) caught only by this live pass.
 
-**Commit state:** as of the start of this session, `main` was fully committed and pushed at `62e16fd`. This report is written before Prompt 12's own commit — see `git log` for the actual current HEAD.
+**Commit state:** as of the start of this session, `main` was fully committed and pushed at `fcc0b71`. This report is written before Prompt 13's own commit — see `git log` for the actual current HEAD.
 
 This is a handoff snapshot, not a living doc — re-verify anything load-bearing before acting on it.
 
@@ -20,7 +20,7 @@ A local Supabase stack has been running throughout recent sessions (`npx supabas
 
 A peer-to-peer recommerce marketplace for Nigeria (beauty-first, multi-category from day one). Sellers list pre-owned goods, buyers pay through escrow-lite (Paystack), funds release on delivery confirmation, platform takes 10% commission. No chat, no negotiation, no auction — the whole product bet is that a seller's *second listing* is the thing to optimize for (primary success metric: **second listing rate within 30 days**, target ≥40%, kill threshold <20% at 8 weeks/50 sellers).
 
-Eleven "prompts" (build sessions) have shipped so far, each logged in full in `docs/HANDOFF.md`, plus two un-numbered sessions: one between Prompts 8 and 9 that fixed a critical schema-access bug (§3 below), and one after Prompt 11 that ran a full real-browser QA pass over the buyer-facing surface (§3.5). This document summarizes where that leaves the codebase.
+Thirteen "prompts" (build sessions) have shipped so far, each logged in full in `docs/HANDOFF.md`, plus two un-numbered sessions: one between Prompts 8 and 9 that fixed a critical schema-access bug (§3 below), and one after Prompt 11 that ran a full real-browser QA pass over the buyer-facing surface (§3.5). This document summarizes where that leaves the codebase.
 
 ---
 
@@ -28,7 +28,7 @@ Eleven "prompts" (build sessions) have shipped so far, each logged in full in `d
 
 | Epic | Status | Notes |
 |---|---|---|
-| **A — Auth & profile** | Mostly built | Email/password signup+verify (Resend via SMTP relay), sign-in/out, middleware route protection, profile edit page. **Not built:** Paystack bank-account resolution/masking (A3 AC2–AC6), AC3 email-verification gate on publish/checkout (nothing to gate yet). |
+| **A — Auth & profile** | Mostly built | Email/password signup+verify (Resend via SMTP relay), sign-in/out, middleware route protection, profile edit page. AC3's email-verification gate is now checked at checkout (Prompt 13) — empirically unreachable in practice, since `config.toml`'s `enable_confirmations = true` already blocks sign-in pre-confirmation (Decision #56), but present as the literal AC and defense-in-depth. **Not built:** Paystack bank-account resolution/masking (A3 AC2–AC6); the equivalent gate on listing publish (`createListing`) still has no explicit check. |
 | **B1 — Create listing** | Built | `/sell`, `createListing`, category registry + 5 Zod schemas, dynamic attribute form, photo upload, tier/cap limit gate, **real contact-detail detector wired in (Prompt 9)** — flags, never blocks. |
 | **B2 — Listing velocity** | Built | Draft autosave (localStorage), "list another" flow, most-recent-category default, multi-photo parallel upload. |
 | **B3 — Price guidance** | **Not built** | No `getPriceGuidance` action, no UI. |
@@ -37,17 +37,18 @@ Eleven "prompts" (build sessions) have shipped so far, each logged in full in `d
 | **C2 — Search** | **Built (Prompt 10)** | `/search`, full-text via a new `search_listings` SQL function over the §7.1 tsvector index, cross-category, `browsable` never checked — verified live. |
 | **C3 — Listing detail** | **Built (Prompt 11)** | `/l/[id]`, Server Component. Photo gallery with flaw-tagged labels, registry-driven generic attribute display (two-claims prominence, measurements sub-table, computed remaining-PAO), full condition definition text, seller reputation block, OG tags, `imei_last_6` stripped at the data layer. Reachable regardless of `browsable`; widened to also serve `sold` listings (new RLS policy). "About the seller" now links to the seller's public profile (Prompt 12). |
 | **C4 — Seller public profile** | **Built (Prompt 12)** | `/s/[handle]`, Server Component. Header (avatar/display name/bio/member-since/state), reputation block reused as-is from Prompt 11, paginated published-listings grid across all categories (`browsable` never checked), paginated non-hidden reviews list. No contact/messaging affordance anywhere. |
-| **D — Purchase & escrow** | **Not built — next up** | No checkout, no Paystack webhook route, no order state machine code (schema + triggers exist), no shipping/delivery/dispute/rating actions. |
+| **D1 — Checkout** | **Built up to Paystack initialize (Prompt 13)** | `initiateCheckout` server action: auth + verified-email + self-purchase checks, Zod-validated delivery details, money snapshot (`amount_kobo`/`commission_kobo`=floor(10%)/`seller_payout_kobo`), service-role `pending` order insert (RLS has no `authenticated` INSERT policy on `orders` at all — by design), the concurrency race (AC8) caught via a new partial-unique-index constraint violation, not a pre-check, Paystack `initialize` called server-side. Buy flow lives on `/l/[id]`. **Not built:** the confirmation webhook (AC2–AC8, Prompt 14's scope), `/orders/[id]` callback page (AC7), the 30-minute expiry cron (AC9, issue #25). |
+| **D2–D6 — Confirmation, fulfilment, delivery/release, dispute, rating** | **Not built** | No webhook route, no order-state-machine actions past `pending`, no shipping/delivery/dispute/rating actions. Schema + triggers already exist (Prompt 5/6). |
 | **E — Admin** | **Not built** | No `/admin` routes, no admin server actions, no admin-role mechanism at all (Known Issue #12). |
 | **Moderation (§9.3)** | **Built (Prompt 9)** | Real Nigerian-phone/email/WhatsApp/Instagram/Telegram/URL detector, wired into listing create + edit. Rating-review scanning has no call site yet (`ratings.ts` action doesn't exist — Epic D6). |
 
-**Net:** the database schema is complete for the whole PRD and, as of the un-numbered session before Prompt 9, **actually verified against a live Postgres instance**. The application layer now covers **Epic A (partial), Epic B (full except price guidance), moderation detection, and all of Epic C** (browse, search, listing detail, seller public profile — Prompt 12 closes out the epic). **Epics D and E have zero application code** — Epic D (purchase & escrow) is next.
+**Net:** the database schema is complete for the whole PRD and, as of the un-numbered session before Prompt 9, **actually verified against a live Postgres instance** — Prompt 13 added one more real schema fix on top of it (Decision #54). The application layer now covers **Epic A (partial), Epic B (full except price guidance), moderation detection, all of Epic C** (browse, search, listing detail, seller public profile), **and the first slice of Epic D** (checkout through Paystack `initialize`, nothing past `pending`). **Epic E has zero application code.** The Paystack webhook — the only writer of `paid` — is next.
 
 ---
 
 ## 3. Database schema — now live-verified, not just written
 
-Seven migrations exist. Every one has been applied via `npx supabase db reset` against a real local Postgres instance and spot-verified by direct query/trigger execution — this closes what was previously the single largest cross-cutting risk in the project (Known Issues #1/#2/#8/#13/#16/#17/#18, all now resolved or superseded).
+Eight migrations exist. Every one has been applied via `npx supabase db reset` (or, for the newest, applied directly against the running local instance and confirmed identical) against a real local Postgres instance and spot-verified by direct query/trigger execution — this closes what was previously the single largest cross-cutting risk in the project (Known Issues #1/#2/#8/#13/#16/#17/#18, all now resolved or superseded).
 
 | Migration | Contents |
 |---|---|
@@ -60,6 +61,7 @@ Seven migrations exist. Every one has been applied via `npx supabase db reset` a
 | `20260729070438_search_listings_function.sql` | `search_listings()` SQL function backing Epic C2, using the existing tsvector index expression verbatim |
 | `20260729080000_profiles_public_dispute_rate.sql` | Adds `dispute_upheld_count` to `profiles_public` — Epic C3's reputation block needs it for dispute rate (Decision #44) |
 | `20260729080500_listings_select_sold.sql` | Widens the public `listings` SELECT policy to also allow `status = 'sold'`, not just `'published'` — required by Epic C3 AC6 (Decision #45) |
+| `20260729090000_orders_listing_active_unique.sql` | Replaces `orders.listing_id`'s blanket `UNIQUE` with a partial unique index scoped to active statuses — required by Epic D1 AC8/AC9, a real gap the original literal §7.1 schema left (Decision #54) |
 
 **What "live-verified" actually means, concretely:**
 - The 5 seeded categories carry correct `listable`/`browsable`/`photo_min`/`allowed_conditions` (only Beauty browsable).
@@ -100,37 +102,44 @@ Health score: 91/100 (dragged down only by the test-data image errors above; eve
 - **Listing-detail attribute rendering is generic and field-name-keyed, never a category-slug switch** (Decision #47) — the two-claims rule (functional_status/cosmetic_grade prominence), remaining-PAO computation, and measurements-as-a-table all key off field names/kinds that recur verbatim across categories, not per-category branches.
 - **Admin-only attribute fields (e.g. Gadgets' `imei_last_6`) are stripped at the data-access layer via a registry-declared field list** (`adminOnlyAttributeFields`, Decision #46), not merely skipped at render time — they never enter the RSC payload at all.
 - **Public read access on `listings` now covers `status in ('published', 'sold')`, not just `'published'`** (Decision #45) — a real gap Epic C3 AC6 surfaced; every other status (draft/removed/suspended) stays non-public.
+- **`orders` has no `authenticated` INSERT/UPDATE policy at all — every write, including initial order creation, goes through the service-role client** (per the table's own migration comment, confirmed live in Prompt 13). Application-level checks (auth, verified email, self-purchase) stand in for RLS on this table, since RLS itself grants nothing to write.
+- **`orders.listing_id` uniqueness is a partial index scoped to active statuses, not a blanket column constraint** (Decision #54) — a listing can hold more than one order row over its lifetime (e.g. one `expired`, one later `pending`); code that assumes at most one row per listing (like `hasBlockingOrder`) must query for "any active row," never `.maybeSingle()`.
+- **Money is integer kobo everywhere, commission is `Math.floor(amount_kobo * 0.10)` stored as an amount and snapshotted at order creation, never a rate, never recomputed** (§8.3, `computeCommission` in `src/lib/money.ts`) — locked in at the unit-test level (`money.test.ts`, Prompt 13) with a non-round-number case proving the fractional kobo favors the seller.
 
 ---
 
 ## 5. Known issues (see `docs/KNOWN_ISSUES.md` for the full list; several resolved since the last report)
 
-**Resolved since the last status report:** #1, #10 (hand-authored types → real CLI-generated), and the entire Docker-unavailable family (#1/#2/#3/#4/#8/#13/#16/#17/#18) via live verification. #24 (no global nav) is partially resolved — Prompt 10 built one, but it's buyer-facing only and still doesn't link to `/dashboard/listings`. The former "`/l/[id]` doesn't exist" gap is now resolved (Prompt 11). **Also resolved, by the post-Prompt-11 QA session:** Prompt 11's own flagged gap that `support_contact_opened`'s client-side firing and `listing_viewed`'s `referrer_surface` attribution had only been read/curl-tested, never exercised in a real browser — both are now confirmed live (§3.5).
+**Resolved since the last status report:** #1, #10 (hand-authored types → real CLI-generated), and the entire Docker-unavailable family (#1/#2/#3/#4/#8/#13/#16/#17/#18) via live verification. #24 (no global nav) is partially resolved — Prompt 10 built one, but it's buyer-facing only and still doesn't link to `/dashboard/listings`. The former "`/l/[id]` doesn't exist" gap is now resolved (Prompt 11). Prompt 11's own flagged gap that `support_contact_opened`'s client-side firing and `listing_viewed`'s `referrer_surface` attribution had only been read/curl-tested is now resolved (post-Prompt-11 QA session, §3.5). **Also partially resolved, by Prompt 13:** #7 (Epic A1 AC3 email-verification gate) — now enforced at checkout, though empirically unreachable given this project's own auth config (Decision #56); still open on the listing-publish half.
 
 **Still open, in rough priority order:**
 1. **No admin-role verification mechanism exists anywhere** (issue #12, Decision #20). Must land before any Epic E code is written — this is a schema decision (an admin claim/column) that deserves its own deliberate migration.
 2. **§5.4 listing-limit gate has a TOCTOU race** (issues #19, #23): count-then-insert isn't serialized in either `createListing` or `updateListing`'s publish path.
-3. **No read-side projection hides buyer delivery details on `orders` pre-`paid`** (issue #14) — matters as soon as any order-read path is built (i.e., as soon as Epic D starts).
-4. **No `view_count` column** (issue #22) — Epic B4 AC1 asks the dashboard to show it; doesn't exist in the schema.
-5. **`/dashboard/listings` still has no inbound nav link** (issue #24) — a global nav now exists (Prompt 10) but is buyer-facing only; needs a seller-facing link added.
-6. **Dynamic listing form only reveals `usageIndicatorFields` conditionally** (issue #20) — other conditionally-required fields always render once a category is picked. Server-side enforcement is complete; UX-only gap.
-7. **Numeric attribute range filtering is out of scope on category pages** (Decision #42) — not a defect, a documented scope boundary tied to the current GIN index shape.
-8. **No edge caching (`revalidate`) on any discovery/detail page** — `createClient()`'s use of `cookies()` forces dynamic rendering regardless of any `revalidate` export; genuine caching would need a separate non-cookie-bound anon client, a real architecture change not taken on as a side effect of Prompt 10 or 11.
-9. **A seller can preview her own `draft` listing at `/l/[id]`** (Prompt 11) — an incidental consequence of `listings_select_own` RLS letting an owner read any status of her own row. Not harmful (no purchase path exists to expose), not asked for, just worth knowing. Untouched by the QA session (out of its buyer-facing scope).
-10. **Per-listing hygiene notices (e.g. flagging Beauty's hygiene-sensitive product types specifically) were not built** (Prompt 11, Decision #49) — narrowed to what's registry-derivable; Personal Care's category-wide "used disallowed" policy is already structurally visible via its condition selector.
-11. **Real-uploaded-photo Lighthouse LCP still hasn't been measured** — both Prompt 11's own Lighthouse run and the QA session's screenshots used seed data with placeholder (never-uploaded) Storage URLs. Structural mitigations (`next/image` format negotiation, `priority` on the first gallery photo) are in place, but an end-to-end run through the real `/sell` upload flow with a genuine photo hasn't been done.
+3. **No read-side projection hides buyer delivery details on `orders` pre-`paid`** (issue #14) — Epic D has now started (Prompt 13's checkout), but no order-read UI exists yet for anyone but the buyer's own just-submitted data, so this gap hasn't actually been triggered in practice yet. Matters as soon as a seller-facing or admin order view is built (Prompt 14+).
+4. **No scheduled job expires stale `pending` orders** (issue #25, §10 Epic D1 AC9) — `/api/cron/expire-pending-orders` is still the empty Prompt-1 scaffold. A `pending` order whose Paystack `initialize` call *succeeds* but is then abandoned has no automatic path back to `expired` yet.
+5. **`/orders/[id]` (the Paystack callback destination) doesn't exist** (issue #26) — referenced by URL from `initiateCheckout`, not built; Prompt 14's scope.
+6. **No `view_count` column** (issue #22) — Epic B4 AC1 asks the dashboard to show it; doesn't exist in the schema.
+7. **`/dashboard/listings` still has no inbound nav link** (issue #24) — a global nav now exists (Prompt 10) but is buyer-facing only; needs a seller-facing link added.
+8. **Dynamic listing form only reveals `usageIndicatorFields` conditionally** (issue #20) — other conditionally-required fields always render once a category is picked. Server-side enforcement is complete; UX-only gap.
+9. **Numeric attribute range filtering is out of scope on category pages** (Decision #42) — not a defect, a documented scope boundary tied to the current GIN index shape.
+10. **No edge caching (`revalidate`) on any discovery/detail page** — `createClient()`'s use of `cookies()` forces dynamic rendering regardless of any `revalidate` export; genuine caching would need a separate non-cookie-bound anon client, a real architecture change not taken on as a side effect of Prompt 10 or 11.
+11. **A seller can preview her own `draft` listing at `/l/[id]`** (Prompt 11) — an incidental consequence of `listings_select_own` RLS letting an owner read any status of her own row. Not harmful (no purchase path exists to expose), not asked for, just worth knowing.
+12. **Per-listing hygiene notices (e.g. flagging Beauty's hygiene-sensitive product types specifically) were not built** (Prompt 11, Decision #49) — narrowed to what's registry-derivable; Personal Care's category-wide "used disallowed" policy is already structurally visible via its condition selector.
+13. **No live end-to-end test of a successful Paystack `initialize` → hosted payment → `charge.success` webhook** (issue #27) — no real Paystack test account exists in this environment. Every Prompt 13 live check exercises the *failure* path only (confirmed to fail gracefully and clean up correctly).
+14. **Real-uploaded-photo Lighthouse LCP still hasn't been measured** — both Prompt 11's own Lighthouse run and the QA session's screenshots used seed data with placeholder (never-uploaded) Storage URLs. Structural mitigations (`next/image` format negotiation, `priority` on the first gallery photo) are in place, but an end-to-end run through the real `/sell` upload flow with a genuine photo hasn't been done.
 
 ---
 
 ## 6. Recommended next steps
 
-Epic C (browse, search, listing detail, seller public profile) is now fully built and live-verified end to end — Prompt 12 closes it out. There's no outstanding cleanup on C1–C4 to do first.
+Epic C (browse, search, listing detail, seller public profile) is fully built and live-verified end to end (Prompt 12). Epic D1 (checkout) is built up to Paystack `initialize` and live-verified through a real browser session, including the concurrency race and the money snapshot (Prompt 13) — nothing marks an order `paid`, by design.
 
 In dependency order:
 
-1. **Epic D (purchase & escrow) — checkout, order creation, Paystack `initialize`.** The immediate next prompt, and the largest remaining surface — the PRD's core success metrics (listing-to-sale conversion, dispute rate) depend on it. Schema and triggers already exist (orders' commission/payout CHECK constraints, the state machine's status enum); checkout, the Paystack webhook, order-state-machine actions, and dispute/rating flows do not. Read §8 (order lifecycle/escrow) and §9.1 (contact-detail release timing) carefully — this is the first prompt that touches real money and real buyer/seller contact info.
-2. **Admin-role mechanism** (Known Issue #12) — needed before any Epic E work; land it as its own deliberate migration.
-3. Close the TOCTOU race (#19/#23) and the orders-column-privacy gap (#14) opportunistically while touching those areas in Epic D, rather than as standalone work.
-4. **B3 (price guidance)**, **view_count (#22)**, and the seller-facing nav link (#24) are small, self-contained, and can slot in whenever convenient.
+1. **The Paystack webhook (`/api/webhooks/paystack`, §10 Epic D2) — the immediate next prompt.** The only writer of `paid`, per its own HARD RULE. Needs: signature verification (AC1), `webhook_events` idempotency insert-first with a `(provider, event_id)` UNIQUE violation returning 200 and doing nothing else — never implemented by checking order status (AC2), the `paid` transition + `listings.status = 'sold'` in one transaction (AC3), an amount cross-check against the order total that flags rather than transitions on mismatch (AC4), `order_paid` firing with `is_repeat_buyer` (AC5), buyer/seller contact-detail release per §9.1 (only on `paid`, nothing this project has built yet touches this), and emails within 10 seconds (AC6). Also needs `/orders/[id]` (the callback page — reads status, writes nothing, AC7) since `initiateCheckout` already references that URL.
+2. **The 30-minute expiry cron** (`/api/cron/expire-pending-orders`, issue #25, AC9) — can land alongside the webhook or right after; closes the last piece of Epic D1.
+3. **Admin-role mechanism** (Known Issue #12) — needed before any Epic E work; land it as its own deliberate migration.
+4. Close the TOCTOU race (#19/#23) and the orders-column-privacy gap (#14, now more concretely motivated — a seller-facing paid-orders view is coming in D3) opportunistically while touching those areas.
+5. **B3 (price guidance)**, **view_count (#22)**, and the seller-facing nav link (#24) are small, self-contained, and can slot in whenever convenient.
 
 Rating-review contact-detail scanning (§7.1 HARD RULE, Epic D6) has a documented TODO in `src/lib/moderation/contact-detector.ts`'s module docstring specifying exactly how to wire it once `submitRating`/`src/lib/actions/ratings.ts` exists — don't rebuild this from scratch when Epic D6 lands.

@@ -823,3 +823,81 @@ than re-deriving a different visibility rule for this one page.
 surface score-only ratings with no written review text (currently excluded,
 consistent with `recentReviews`) — that would be a deliberate broadening of
 what counts as a displayable "review," not a fix to this decision.
+
+---
+
+## From Prompt 13
+
+### 54. `orders.listing_id`'s blanket `UNIQUE` constraint replaced with a partial unique index scoped to active statuses; no `delivery_city` field
+**Why, the index:** §10 Epic D1 AC8 says a listing "already having a non
+`cancelled`, non `expired` order cannot enter checkout... the UNIQUE
+constraint on `orders.listing_id` is the enforcement." AC9 says an expired
+`pending` order "frees the listing." Prompt 5 built `orders.listing_id` as a
+literal, unconditional `UNIQUE` column constraint straight from §7.1's
+table — correct at the time (Epic D didn't exist yet to expose the
+tension), but a blanket `UNIQUE` cannot express "unique only while active":
+once any order ever existed for a listing, no second order could ever be
+inserted for that `listing_id` again, even after the first resolved to
+`cancelled`/`expired` — permanently blocking every future purchase on that
+listing after a single expired checkout, directly contradicting AC9's
+"freeing the listing." A partial unique index
+(`create unique index ... where status not in ('cancelled', 'expired')`) is
+the standard Postgres mechanism for exactly this — unique among active
+rows, freed the instant a row exits that set. Verified live: two `pending`
+orders for the same listing conflict; a second becomes insertable the
+instant the first is updated to `expired`. `hasBlockingOrder`
+(`src/lib/listings/has-blocking-order.ts`, Prompt 8) had to be fixed
+alongside this — it previously used `.maybeSingle()` on the assumption of
+at most one order row per listing, which the partial index's very premise
+(a listing can now hold more than one order row over its lifetime) breaks.
+**Why, no `delivery_city`:** the checkout brief's own item list named five
+delivery fields including `delivery_city`; grepped §7.1's `orders` table
+and §9.1's contact-release list for `delivery_city` — zero hits in either,
+only four fields (`delivery_name`, `delivery_state`, `delivery_address`,
+`delivery_phone`) exist anywhere in the PRD. Resolved in favor of the PRD's
+actual schema — a full street address is expected to carry the city
+inline, same as it already must for every other address component.
+**Revisit:** No — this is now the correct, permanent shape for both.
+
+### 55. A `pending` order whose Paystack `initialize` call fails is deleted, not left pending
+**Why:** this order never reached Paystack — no `paystack_reference` was
+ever issued, so no real payment attempt was ever shown to the buyer. The
+30-minute expiry cron (§10 Epic D1 AC9, `/api/cron/expire-pending-orders`)
+is explicitly out of this prompt's stated scope and does not exist yet;
+without deleting the row here, a single transient Paystack failure (a
+network blip, a misconfigured key, a Paystack outage) would permanently
+lock the listing behind `orders_listing_id_active_unique` (Decision #54)
+with zero recovery path until that cron is eventually built. Deleting a
+row that never had a reference and never represented a real attempt isn't
+destroying an audit trail — the trail starts at a stored
+`paystack_reference`, which this row never got. Best-effort: if the delete
+itself fails, the leftover row is easy to identify (no
+`paystack_reference`) and harmless, and gets cleaned up once the expiry
+cron exists.
+**Revisit:** Yes, once `/api/cron/expire-pending-orders` is built — at that
+point, re-examine whether this delete-on-failure path is still needed or
+whether it's now redundant with the cron (it's likely still worth keeping,
+since it gives an *immediate* retry rather than making a buyer wait up to
+30 minutes after a transient failure, but that's a call for whoever builds
+the cron, informed by what actually ships).
+
+### 56. `initiateCheckout` keeps its own `!user.email_confirmed_at` check even though this project's auth config makes it currently unreachable
+**Why:** empirically confirmed (a direct `password`-grant request against
+the local GoTrue instance for a deliberately-unconfirmed test account)
+that `supabase/config.toml`'s `[auth.email] enable_confirmations = true`
+blocks sign-in entirely pre-confirmation — a session cannot exist in this
+app without an already-confirmed email. That makes §10 Epic D1 AC1's
+"buying requires... a verified email" check technically dead code today:
+if `user` exists in `initiateCheckout`, `email_confirmed_at` is already
+guaranteed non-null by construction. Kept anyway, for three reasons: (1)
+it's the literal text of the AC, not an inference from other config; (2)
+it's zero runtime cost; (3) defense-in-depth against a future change to
+`enable_confirmations`, or a different future auth path (magic link,
+OAuth, admin-created sessions) that might not enforce the same gate —
+matching this codebase's established pattern of re-checking a condition in
+application code even where another layer currently also guarantees it
+(e.g. Prompt 4's `flaw_photo_indexes` CHECK constraint alongside Zod).
+**Revisit:** Only if a future prompt adds an auth path that doesn't route
+through GoTrue's own confirmation gate — at that point this stops being
+unreachable and the reasoning above should be re-read against the new
+path, not removed.
