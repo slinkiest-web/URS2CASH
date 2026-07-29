@@ -107,6 +107,14 @@ export async function createListing(input: CreateListingInput): Promise<Result<{
       attribute_schema_version: data.categoryConfig.schemaVersion,
       photo_urls: data.photoUrls,
       flaw_photo_indexes: data.flawPhotoIndexes,
+      // §7.1 HARD RULE: assigned by the assign_seller_listing_index trigger,
+      // never by application code. The column has no DB-level DEFAULT (only
+      // the trigger fills it), so the generated Insert type correctly
+      // requires a value here — this placeholder is always overwritten
+      // before the row commits: to the real sequence number when the
+      // trigger's publish branch fires, otherwise to its own `0` sentinel
+      // for a non-published insert (docs/DECISIONS.md #16).
+      seller_listing_index: 0,
     })
     .select("id, seller_listing_index")
     .single();

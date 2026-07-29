@@ -572,3 +572,47 @@ specifically wants deduplicated flags (e.g. one open flag per listing,
 updated in place) rather than one row per detection event — that would be
 a deliberate scope change to the queue's data model, not a fix to this
 prompt's behavior.
+
+---
+
+## From Prompt 10
+
+### 42. Category attribute filters scoped to `enum`/`boolean` registry fields only — no numeric range filtering
+**Why:** §10 Epic C1 AC5 requires attribute filters to "query the GIN index
+on `attributes` with `category_id` already applied." The only index that
+exists on `attributes` is a plain `gin(attributes)` (`jsonb_ops`), which
+accelerates containment (`@>`) and existence operators — not range
+comparisons on an extracted value. `enum` fields (exact match) and
+`boolean` fields both map cleanly to `attributes @> {"field": value}`,
+which the GIN index serves directly. A numeric range filter (e.g.
+`battery_health_percent >= 80`) would need `(attributes->>'field')::numeric
+>= 80`, which does not use this index — building that filter would
+either violate AC5's literal requirement or need a different index
+shape the PRD doesn't specify. Scoped out rather than shipped
+non-compliant.
+**Revisit:** If a future prompt adds a numeric-range-capable index (e.g. a
+per-field expression index, or promoting a specific attribute to a real
+column per §6.1's stated escape hatch), re-open this and add range filters
+for that field specifically — not by broadening this general mechanism.
+
+### 43. `database.types.ts` swapped from hand-authored to genuinely CLI-generated
+**Why:** this prompt's `search_listings` RPC needed a correctly typed
+signature, which the hand-authored file couldn't have (it predates the
+function). Docker has been available since the session before this one
+(see the grants-fix and Prompt 9 sessions), so regenerating for real was
+finally possible — this was the first prompt that actually *needed* the
+regenerated output, making it the natural moment to complete the swap the
+file's own header comment had been promising since Prompt 2. Diffed
+against the previous hand-authored version first: every table's
+Row/Insert/Update shape matched field-for-field. Two differences, both
+now correctly present: (a) every view column (`profiles_public`,
+`ratings_public`) is nullable in the generated types, since Postgres
+doesn't reliably propagate `NOT NULL` through views — the hand-authored
+version had incorrectly assumed base-table non-null survived the view;
+(b) the `Relationships` arrays are fuller — duplicate entries pointing at
+`_public` views alongside base tables (e.g. `ratings.rater_id` resolves to
+both `profiles` and `profiles_public`), which the hand-authored version
+didn't attempt to replicate by hand.
+**Revisit:** No — this is now the real, CLI-generated file. Regenerate and
+commit it alongside every future migration, per the README's own HARD
+RULE; never hand-edit it again.

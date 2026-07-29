@@ -1,616 +1,988 @@
 /**
  * Generated Supabase database types.
  *
- * ⚠️ PROVISIONAL — HAND-AUTHORED, NOT CLI-GENERATED.
- *
- * HARD RULE (PRD §12.1): this file must be produced by running
+ * CLI-generated (finally — Docker is now available). Produced by:
  *   npx supabase gen types typescript --local > src/lib/database.types.ts
- * after every migration, and committed in the same commit as the migration.
+ * against every migration through 20260729070438_search_listings_function.sql.
  *
- * That command requires a running local Supabase stack (Docker), which is
- * not available in the environment this file was authored in — Docker itself
- * is not installed, so `supabase start` / `supabase db reset` cannot run.
+ * This replaces the hand-authored version that stood in for it through
+ * Prompts 2–9 (Docker was unavailable in every earlier session). The prior
+ * verification pass (see docs/HANDOFF.md Prompt 9's predecessor session)
+ * diffed the hand-authored file against a real CLI-generated snapshot and
+ * found every table's Row/Insert/Update shape matched field-for-field; the
+ * only real differences were view-column nullability (views mark every
+ * column nullable; the hand-authored version assumed the base table's
+ * NOT NULL survived the view) and a smaller `Relationships` array (missing
+ * duplicate entries pointing at `_public` views alongside base tables) —
+ * both now correctly present below.
  *
- * This file was written by hand to mirror the shape
- * `supabase gen types typescript` would produce for migrations
- * 20260727202617_profiles.sql, 20260727215742_categories_listings.sql, and
- * 20260728100239_orders_and_related.sql, so the app can typecheck against
- * real column names in the meantime. Regenerate it for real as soon as
- * Docker is available locally, and delete this notice once the CLI output
- * replaces it.
+ * Regenerate and commit alongside every future migration (PRD §12.1 HARD
+ * RULE). Do not hand-edit this file.
  */
-
 export type Json =
   | string
   | number
   | boolean
   | null
   | { [key: string]: Json | undefined }
-  | Json[];
+  | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
-      profiles: {
-        Row: {
-          id: string;
-          display_name: string;
-          handle: string;
-          avatar_url: string | null;
-          bio: string | null;
-          phone: string | null;
-          state: string | null;
-          is_suspended: boolean;
-          completed_sales_count: number;
-          rating_average: number | null;
-          rating_count: number;
-          dispute_upheld_count: number;
-          listing_limit_override: number | null;
-          created_at: string;
-        };
-        Insert: {
-          id: string;
-          display_name: string;
-          handle: string;
-          avatar_url?: string | null;
-          bio?: string | null;
-          phone?: string | null;
-          state?: string | null;
-          is_suspended?: boolean;
-          completed_sales_count?: number;
-          rating_average?: number | null;
-          rating_count?: number;
-          dispute_upheld_count?: number;
-          listing_limit_override?: number | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          display_name?: string;
-          handle?: string;
-          avatar_url?: string | null;
-          bio?: string | null;
-          phone?: string | null;
-          state?: string | null;
-          is_suspended?: boolean;
-          completed_sales_count?: number;
-          rating_average?: number | null;
-          rating_count?: number;
-          dispute_upheld_count?: number;
-          listing_limit_override?: number | null;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "profiles_id_fkey";
-            columns: ["id"];
-            isOneToOne: true;
-            referencedRelation: "users";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      payout_accounts: {
-        Row: {
-          id: string;
-          profile_id: string;
-          bank_code: string;
-          bank_name: string;
-          account_number: string;
-          account_name: string;
-          is_verified: boolean;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          profile_id: string;
-          bank_code: string;
-          bank_name: string;
-          account_number: string;
-          account_name: string;
-          is_verified?: boolean;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          profile_id?: string;
-          bank_code?: string;
-          bank_name?: string;
-          account_number?: string;
-          account_name?: string;
-          is_verified?: boolean;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "payout_accounts_profile_id_fkey";
-            columns: ["profile_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       categories: {
         Row: {
-          id: string;
-          slug: string;
-          name: string;
-          listable: boolean;
-          browsable: boolean;
-          photo_min: number;
-          allowed_conditions: string[];
-          sort_order: number;
-          created_at: string;
-        };
+          allowed_conditions: string[]
+          browsable: boolean
+          created_at: string
+          id: string
+          listable: boolean
+          name: string
+          photo_min: number
+          slug: string
+          sort_order: number
+        }
         Insert: {
-          id?: string;
-          slug: string;
-          name: string;
-          listable?: boolean;
-          browsable?: boolean;
-          photo_min: number;
-          allowed_conditions: string[];
-          sort_order?: number;
-          created_at?: string;
-        };
+          allowed_conditions: string[]
+          browsable?: boolean
+          created_at?: string
+          id?: string
+          listable?: boolean
+          name: string
+          photo_min: number
+          slug: string
+          sort_order?: number
+        }
         Update: {
-          id?: string;
-          slug?: string;
-          name?: string;
-          listable?: boolean;
-          browsable?: boolean;
-          photo_min?: number;
-          allowed_conditions?: string[];
-          sort_order?: number;
-          created_at?: string;
-        };
-        Relationships: [];
-      };
-      listings: {
-        Row: {
-          id: string;
-          seller_id: string;
-          category_id: string;
-          title: string;
-          description: string;
-          price_kobo: number;
-          condition: string;
-          condition_notes: string | null;
-          status: string;
-          attributes: Json;
-          attribute_schema_version: number;
-          photo_urls: string[];
-          flaw_photo_indexes: number[];
-          seller_listing_index: number;
-          published_at: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          seller_id: string;
-          category_id: string;
-          title: string;
-          description: string;
-          price_kobo: number;
-          condition: string;
-          condition_notes?: string | null;
-          status?: string;
-          attributes?: Json;
-          attribute_schema_version: number;
-          photo_urls: string[];
-          flaw_photo_indexes?: number[];
-          // NOT NULL with no column default — the assign_seller_listing_index
-          // trigger always overwrites this before the row is written.
-          seller_listing_index?: number;
-          published_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          seller_id?: string;
-          category_id?: string;
-          title?: string;
-          description?: string;
-          price_kobo?: number;
-          condition?: string;
-          condition_notes?: string | null;
-          status?: string;
-          attributes?: Json;
-          attribute_schema_version?: number;
-          photo_urls?: string[];
-          flaw_photo_indexes?: number[];
-          seller_listing_index?: number;
-          published_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "listings_seller_id_fkey";
-            columns: ["seller_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "listings_category_id_fkey";
-            columns: ["category_id"];
-            isOneToOne: false;
-            referencedRelation: "categories";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      orders: {
-        Row: {
-          id: string;
-          listing_id: string;
-          buyer_id: string;
-          seller_id: string;
-          status: string;
-          amount_kobo: number;
-          commission_kobo: number;
-          seller_payout_kobo: number;
-          paystack_reference: string | null;
-          delivery_name: string;
-          delivery_state: string;
-          delivery_address: string;
-          delivery_phone: string;
-          tracking_note: string | null;
-          paid_at: string | null;
-          shipped_at: string | null;
-          delivered_at: string | null;
-          released_at: string | null;
-          disputed_at: string | null;
-          refunded_at: string | null;
-          auto_release_at: string | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          listing_id: string;
-          buyer_id: string;
-          seller_id: string;
-          status?: string;
-          amount_kobo: number;
-          commission_kobo: number;
-          seller_payout_kobo: number;
-          paystack_reference?: string | null;
-          delivery_name: string;
-          delivery_state: string;
-          delivery_address: string;
-          delivery_phone: string;
-          tracking_note?: string | null;
-          paid_at?: string | null;
-          shipped_at?: string | null;
-          delivered_at?: string | null;
-          released_at?: string | null;
-          disputed_at?: string | null;
-          refunded_at?: string | null;
-          auto_release_at?: string | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          listing_id?: string;
-          buyer_id?: string;
-          seller_id?: string;
-          status?: string;
-          amount_kobo?: number;
-          commission_kobo?: number;
-          seller_payout_kobo?: number;
-          paystack_reference?: string | null;
-          delivery_name?: string;
-          delivery_state?: string;
-          delivery_address?: string;
-          delivery_phone?: string;
-          tracking_note?: string | null;
-          paid_at?: string | null;
-          shipped_at?: string | null;
-          delivered_at?: string | null;
-          released_at?: string | null;
-          disputed_at?: string | null;
-          refunded_at?: string | null;
-          auto_release_at?: string | null;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "orders_listing_id_fkey";
-            columns: ["listing_id"];
-            isOneToOne: true;
-            referencedRelation: "listings";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "orders_buyer_id_fkey";
-            columns: ["buyer_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "orders_seller_id_fkey";
-            columns: ["seller_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
+          allowed_conditions?: string[]
+          browsable?: boolean
+          created_at?: string
+          id?: string
+          listable?: boolean
+          name?: string
+          photo_min?: number
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       disputes: {
         Row: {
-          id: string;
-          order_id: string;
-          raised_by: string;
-          reason: string;
-          detail: string;
-          evidence_urls: string[];
-          status: string;
-          admin_notes: string | null;
-          resolved_by: string | null;
-          resolved_at: string | null;
-          created_at: string;
-        };
+          admin_notes: string | null
+          created_at: string
+          detail: string
+          evidence_urls: string[]
+          id: string
+          order_id: string
+          raised_by: string
+          reason: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+        }
         Insert: {
-          id?: string;
-          order_id: string;
-          raised_by: string;
-          reason: string;
-          detail: string;
-          evidence_urls?: string[];
-          status?: string;
-          admin_notes?: string | null;
-          resolved_by?: string | null;
-          resolved_at?: string | null;
-          created_at?: string;
-        };
+          admin_notes?: string | null
+          created_at?: string
+          detail: string
+          evidence_urls?: string[]
+          id?: string
+          order_id: string
+          raised_by: string
+          reason: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
         Update: {
-          id?: string;
-          order_id?: string;
-          raised_by?: string;
-          reason?: string;
-          detail?: string;
-          evidence_urls?: string[];
-          status?: string;
-          admin_notes?: string | null;
-          resolved_by?: string | null;
-          resolved_at?: string | null;
-          created_at?: string;
-        };
+          admin_notes?: string | null
+          created_at?: string
+          detail?: string
+          evidence_urls?: string[]
+          id?: string
+          order_id?: string
+          raised_by?: string
+          reason?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
         Relationships: [
           {
-            foreignKeyName: "disputes_order_id_fkey";
-            columns: ["order_id"];
-            isOneToOne: true;
-            referencedRelation: "orders";
-            referencedColumns: ["id"];
+            foreignKeyName: "disputes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "disputes_raised_by_fkey";
-            columns: ["raised_by"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
+            foreignKeyName: "disputes_raised_by_fkey"
+            columns: ["raised_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
-        ];
-      };
-      ratings: {
+          {
+            foreignKeyName: "disputes_raised_by_fkey"
+            columns: ["raised_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disputes_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disputes_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      listings: {
         Row: {
-          id: string;
-          order_id: string;
-          rater_id: string;
-          seller_id: string;
-          score: number;
-          review: string | null;
-          is_hidden: boolean;
-          created_at: string;
-        };
+          attribute_schema_version: number
+          attributes: Json
+          category_id: string
+          condition: string
+          condition_notes: string | null
+          created_at: string
+          description: string
+          flaw_photo_indexes: number[]
+          id: string
+          photo_urls: string[]
+          price_kobo: number
+          published_at: string | null
+          seller_id: string
+          seller_listing_index: number
+          status: string
+          title: string
+          updated_at: string
+        }
         Insert: {
-          id?: string;
-          order_id: string;
-          rater_id: string;
-          seller_id: string;
-          score: number;
-          review?: string | null;
-          is_hidden?: boolean;
-          created_at?: string;
-        };
+          attribute_schema_version: number
+          attributes?: Json
+          category_id: string
+          condition: string
+          condition_notes?: string | null
+          created_at?: string
+          description: string
+          flaw_photo_indexes?: number[]
+          id?: string
+          photo_urls: string[]
+          price_kobo: number
+          published_at?: string | null
+          seller_id: string
+          seller_listing_index: number
+          status?: string
+          title: string
+          updated_at?: string
+        }
         Update: {
-          id?: string;
-          order_id?: string;
-          rater_id?: string;
-          seller_id?: string;
-          score?: number;
-          review?: string | null;
-          is_hidden?: boolean;
-          created_at?: string;
-        };
+          attribute_schema_version?: number
+          attributes?: Json
+          category_id?: string
+          condition?: string
+          condition_notes?: string | null
+          created_at?: string
+          description?: string
+          flaw_photo_indexes?: number[]
+          id?: string
+          photo_urls?: string[]
+          price_kobo?: number
+          published_at?: string | null
+          seller_id?: string
+          seller_listing_index?: number
+          status?: string
+          title?: string
+          updated_at?: string
+        }
         Relationships: [
           {
-            foreignKeyName: "ratings_order_id_fkey";
-            columns: ["order_id"];
-            isOneToOne: true;
-            referencedRelation: "orders";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      payouts: {
-        Row: {
-          id: string;
-          order_id: string;
-          seller_id: string;
-          payout_account_id: string;
-          amount_kobo: number;
-          status: string;
-          admin_reference: string | null;
-          paid_by: string | null;
-          paid_at: string | null;
-          failure_note: string | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          order_id: string;
-          seller_id: string;
-          payout_account_id: string;
-          amount_kobo: number;
-          status?: string;
-          admin_reference?: string | null;
-          paid_by?: string | null;
-          paid_at?: string | null;
-          failure_note?: string | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          order_id?: string;
-          seller_id?: string;
-          payout_account_id?: string;
-          amount_kobo?: number;
-          status?: string;
-          admin_reference?: string | null;
-          paid_by?: string | null;
-          paid_at?: string | null;
-          failure_note?: string | null;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "payouts_order_id_fkey";
-            columns: ["order_id"];
-            isOneToOne: true;
-            referencedRelation: "orders";
-            referencedColumns: ["id"];
+            foreignKeyName: "listings_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "payouts_payout_account_id_fkey";
-            columns: ["payout_account_id"];
-            isOneToOne: false;
-            referencedRelation: "payout_accounts";
-            referencedColumns: ["id"];
+            foreignKeyName: "listings_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
-        ];
-      };
+          {
+            foreignKeyName: "listings_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       moderation_flags: {
         Row: {
-          id: string;
-          listing_id: string;
-          source: string;
-          reason: string;
-          pattern_type: string | null;
-          matched_text: string | null;
-          status: string;
-          reviewed_by: string | null;
-          reviewed_at: string | null;
-          created_at: string;
-        };
+          created_at: string
+          id: string
+          listing_id: string
+          matched_text: string | null
+          pattern_type: string | null
+          reason: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source: string
+          status: string
+        }
         Insert: {
-          id?: string;
-          listing_id: string;
-          source: string;
-          reason: string;
-          pattern_type?: string | null;
-          matched_text?: string | null;
-          status?: string;
-          reviewed_by?: string | null;
-          reviewed_at?: string | null;
-          created_at?: string;
-        };
+          created_at?: string
+          id?: string
+          listing_id: string
+          matched_text?: string | null
+          pattern_type?: string | null
+          reason: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source: string
+          status?: string
+        }
         Update: {
-          id?: string;
-          listing_id?: string;
-          source?: string;
-          reason?: string;
-          pattern_type?: string | null;
-          matched_text?: string | null;
-          status?: string;
-          reviewed_by?: string | null;
-          reviewed_at?: string | null;
-          created_at?: string;
-        };
+          created_at?: string
+          id?: string
+          listing_id?: string
+          matched_text?: string | null
+          pattern_type?: string | null
+          reason?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source?: string
+          status?: string
+        }
         Relationships: [
           {
-            foreignKeyName: "moderation_flags_listing_id_fkey";
-            columns: ["listing_id"];
-            isOneToOne: false;
-            referencedRelation: "listings";
-            referencedColumns: ["id"];
+            foreignKeyName: "moderation_flags_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
           },
-        ];
-      };
+          {
+            foreignKeyName: "moderation_flags_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "moderation_flags_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          amount_kobo: number
+          auto_release_at: string | null
+          buyer_id: string
+          commission_kobo: number
+          created_at: string
+          delivered_at: string | null
+          delivery_address: string
+          delivery_name: string
+          delivery_phone: string
+          delivery_state: string
+          disputed_at: string | null
+          id: string
+          listing_id: string
+          paid_at: string | null
+          paystack_reference: string | null
+          refunded_at: string | null
+          released_at: string | null
+          seller_id: string
+          seller_payout_kobo: number
+          shipped_at: string | null
+          status: string
+          tracking_note: string | null
+        }
+        Insert: {
+          amount_kobo: number
+          auto_release_at?: string | null
+          buyer_id: string
+          commission_kobo: number
+          created_at?: string
+          delivered_at?: string | null
+          delivery_address: string
+          delivery_name: string
+          delivery_phone: string
+          delivery_state: string
+          disputed_at?: string | null
+          id?: string
+          listing_id: string
+          paid_at?: string | null
+          paystack_reference?: string | null
+          refunded_at?: string | null
+          released_at?: string | null
+          seller_id: string
+          seller_payout_kobo: number
+          shipped_at?: string | null
+          status?: string
+          tracking_note?: string | null
+        }
+        Update: {
+          amount_kobo?: number
+          auto_release_at?: string | null
+          buyer_id?: string
+          commission_kobo?: number
+          created_at?: string
+          delivered_at?: string | null
+          delivery_address?: string
+          delivery_name?: string
+          delivery_phone?: string
+          delivery_state?: string
+          disputed_at?: string | null
+          id?: string
+          listing_id?: string
+          paid_at?: string | null
+          paystack_reference?: string | null
+          refunded_at?: string | null
+          released_at?: string | null
+          seller_id?: string
+          seller_payout_kobo?: number
+          shipped_at?: string | null
+          status?: string
+          tracking_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: true
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payout_accounts: {
+        Row: {
+          account_name: string
+          account_number: string
+          bank_code: string
+          bank_name: string
+          created_at: string
+          id: string
+          is_verified: boolean
+          profile_id: string
+        }
+        Insert: {
+          account_name: string
+          account_number: string
+          bank_code: string
+          bank_name: string
+          created_at?: string
+          id?: string
+          is_verified?: boolean
+          profile_id: string
+        }
+        Update: {
+          account_name?: string
+          account_number?: string
+          bank_code?: string
+          bank_name?: string
+          created_at?: string
+          id?: string
+          is_verified?: boolean
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payout_accounts_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payout_accounts_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payouts: {
+        Row: {
+          admin_reference: string | null
+          amount_kobo: number
+          created_at: string
+          failure_note: string | null
+          id: string
+          order_id: string
+          paid_at: string | null
+          paid_by: string | null
+          payout_account_id: string
+          seller_id: string
+          status: string
+        }
+        Insert: {
+          admin_reference?: string | null
+          amount_kobo: number
+          created_at?: string
+          failure_note?: string | null
+          id?: string
+          order_id: string
+          paid_at?: string | null
+          paid_by?: string | null
+          payout_account_id: string
+          seller_id: string
+          status?: string
+        }
+        Update: {
+          admin_reference?: string | null
+          amount_kobo?: number
+          created_at?: string
+          failure_note?: string | null
+          id?: string
+          order_id?: string
+          paid_at?: string | null
+          paid_by?: string | null
+          payout_account_id?: string
+          seller_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payouts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_payout_account_id_fkey"
+            columns: ["payout_account_id"]
+            isOneToOne: false
+            referencedRelation: "payout_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          bio: string | null
+          completed_sales_count: number
+          created_at: string
+          display_name: string
+          dispute_upheld_count: number
+          handle: string
+          id: string
+          is_suspended: boolean
+          listing_limit_override: number | null
+          phone: string | null
+          rating_average: number | null
+          rating_count: number
+          state: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          bio?: string | null
+          completed_sales_count?: number
+          created_at?: string
+          display_name: string
+          dispute_upheld_count?: number
+          handle: string
+          id: string
+          is_suspended?: boolean
+          listing_limit_override?: number | null
+          phone?: string | null
+          rating_average?: number | null
+          rating_count?: number
+          state?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          bio?: string | null
+          completed_sales_count?: number
+          created_at?: string
+          display_name?: string
+          dispute_upheld_count?: number
+          handle?: string
+          id?: string
+          is_suspended?: boolean
+          listing_limit_override?: number | null
+          phone?: string | null
+          rating_average?: number | null
+          rating_count?: number
+          state?: string | null
+        }
+        Relationships: []
+      }
+      ratings: {
+        Row: {
+          created_at: string
+          id: string
+          is_hidden: boolean
+          order_id: string
+          rater_id: string
+          review: string | null
+          score: number
+          seller_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_hidden?: boolean
+          order_id: string
+          rater_id: string
+          review?: string | null
+          score: number
+          seller_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_hidden?: boolean
+          order_id?: string
+          rater_id?: string
+          review?: string | null
+          score?: number
+          seller_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ratings_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ratings_rater_id_fkey"
+            columns: ["rater_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ratings_rater_id_fkey"
+            columns: ["rater_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ratings_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ratings_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_events: {
         Row: {
-          id: string;
-          provider: string;
-          event_id: string;
-          event_type: string;
-          payload: Json;
-          processed_at: string | null;
-          created_at: string;
-        };
+          created_at: string
+          event_id: string
+          event_type: string
+          id: string
+          payload: Json
+          processed_at: string | null
+          provider: string
+        }
         Insert: {
-          id?: string;
-          provider: string;
-          event_id: string;
-          event_type: string;
-          payload: Json;
-          processed_at?: string | null;
-          created_at?: string;
-        };
+          created_at?: string
+          event_id: string
+          event_type: string
+          id?: string
+          payload: Json
+          processed_at?: string | null
+          provider: string
+        }
         Update: {
-          id?: string;
-          provider?: string;
-          event_id?: string;
-          event_type?: string;
-          payload?: Json;
-          processed_at?: string | null;
-          created_at?: string;
-        };
-        Relationships: [];
-      };
-    };
+          created_at?: string
+          event_id?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          provider?: string
+        }
+        Relationships: []
+      }
+    }
     Views: {
       profiles_public: {
         Row: {
-          id: string;
-          display_name: string;
-          handle: string;
-          avatar_url: string | null;
-          bio: string | null;
-          state: string | null;
-          completed_sales_count: number;
-          rating_average: number | null;
-          rating_count: number;
-          created_at: string;
-        };
-        Relationships: [];
-      };
+          avatar_url: string | null
+          bio: string | null
+          completed_sales_count: number | null
+          created_at: string | null
+          display_name: string | null
+          handle: string | null
+          id: string | null
+          rating_average: number | null
+          rating_count: number | null
+          state: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          bio?: string | null
+          completed_sales_count?: number | null
+          created_at?: string | null
+          display_name?: string | null
+          handle?: string | null
+          id?: string | null
+          rating_average?: number | null
+          rating_count?: number | null
+          state?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          bio?: string | null
+          completed_sales_count?: number | null
+          created_at?: string | null
+          display_name?: string | null
+          handle?: string | null
+          id?: string | null
+          rating_average?: number | null
+          rating_count?: number | null
+          state?: string | null
+        }
+        Relationships: []
+      }
       ratings_public: {
         Row: {
-          id: string;
-          order_id: string;
-          rater_id: string;
-          seller_id: string;
-          score: number;
-          review: string | null;
-          is_hidden: boolean;
-          created_at: string;
-        };
-        Relationships: [];
-      };
-    };
+          created_at: string | null
+          id: string | null
+          is_hidden: boolean | null
+          order_id: string | null
+          rater_id: string | null
+          review: string | null
+          score: number | null
+          seller_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          is_hidden?: boolean | null
+          order_id?: string | null
+          rater_id?: string | null
+          review?: never
+          score?: number | null
+          seller_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          is_hidden?: boolean | null
+          order_id?: string | null
+          rater_id?: string | null
+          review?: never
+          score?: number | null
+          seller_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ratings_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ratings_rater_id_fkey"
+            columns: ["rater_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ratings_rater_id_fkey"
+            columns: ["rater_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ratings_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ratings_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
     Functions: {
-      generate_unique_handle: {
-        Args: { base: string };
-        Returns: string;
-      };
-    };
-    Enums: Record<string, never>;
-    CompositeTypes: Record<string, never>;
-  };
-};
+      generate_unique_handle: { Args: { base: string }; Returns: string }
+      search_listings: {
+        Args: {
+          result_limit?: number
+          result_offset?: number
+          search_query: string
+        }
+        Returns: {
+          attribute_schema_version: number
+          attributes: Json
+          category_id: string
+          condition: string
+          condition_notes: string | null
+          created_at: string
+          description: string
+          flaw_photo_indexes: number[]
+          id: string
+          photo_urls: string[]
+          price_kobo: number
+          published_at: string | null
+          seller_id: string
+          seller_listing_index: number
+          status: string
+          title: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "listings"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
+  public: {
+    Enums: {},
+  },
+} as const

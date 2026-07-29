@@ -14,7 +14,10 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
    --local` could not run. `src/lib/database.types.ts` was written by hand to
    mirror `20260727202617_profiles.sql`. Regenerate it for real as soon as
    Docker is available and diff against the hand-written version.
-   **Status:** open.
+   **Status:** RESOLVED (Prompt 10). Docker became available two sessions
+   prior; this prompt's `search_listings` RPC needed the real generated
+   type, making this the moment to complete the swap. Diffed field-for-field
+   against the hand-authored version first — see `docs/DECISIONS.md` #43.
 
 2. **Migration `20260727202617_profiles.sql` has never been run against a real Postgres instance.**
    `supabase db reset` could not execute (same Docker gap as #1). The SQL is
@@ -74,7 +77,7 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
 10. **`database.types.ts` now covers 4 tables + 1 view, all hand-authored.**
     Extends issue #1 — every prompt that adds schema without Docker widens
     the gap between this file and what the CLI would actually generate.
-    **Status:** open, growing.
+    **Status:** RESOLVED (Prompt 10), together with #1.
 
 11. **The `listings_flaw_photo_required_when_used` and `listings_condition_notes_required_when_used` CHECK constraints are the only DB-level enforcement of §6.3's "used requires evidence" rule; the Zod side (category attribute schemas, Prompt 3) doesn't validate `condition_notes`/`flaw_photo_indexes` at all**, since those are real `listings` columns, not category `attributes` JSONB, and were out of scope for Prompt 3's category-registry resolver.
     **Status:** open. The listing-creation server action (a future prompt) needs its own Zod schema for the listing-level fields (`title`, `description`, `condition_notes`, `flaw_photo_indexes`, `photo_urls`) that composes with `resolveCategoryAttributes()` — the DB constraints are a backstop, not the primary validation layer.
@@ -223,5 +226,9 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     a link to. The page is reachable directly and is linked *from*
     (`listing-form.tsx`'s post-publish "Continue to dashboard"), but
     nothing currently links *to* it from, e.g., `/dashboard/profile`.
-    **Status:** open, low priority. Revisit when a shared nav/header is
-    built — not this prompt's scope to invent one.
+    **Status:** open, low priority, but the blocker is gone: Prompt 10 built
+    `src/components/site-header.tsx`, a global nav in the root layout — it's
+    buyer-facing (browsable categories + search) and deliberately doesn't add
+    a seller-dashboard link, since neither this prompt nor its predecessor
+    scoped seller-facing nav. Revisit now that a nav exists to actually add
+    a link to.
