@@ -566,3 +566,29 @@ function releaseOrder(orderId: string): Promise<Result<void>>  // not in §11.2'
 ```
 
 See `docs/DECISIONS.md` #61–#65 for this prompt's design choices.
+
+---
+
+## Un-numbered session — full purchase journey QA + fixes (post-Prompt 15)
+
+Not a build prompt — a full-browser walkthrough of the entire purchase journey using gstack's `/qa` skill, closing the gap that everything verifying Epic D so far (Prompts 13–15) had been checked by curl, direct RPC call, or hand-seeded fixture, never by an actual browser session clicking through the real UI from the home page onward. Same precedent as the two earlier un-numbered sessions (the grants-fix between Prompts 8/9, the post-Prompt-11 QA pass).
+
+**Scope:** seeded a fresh seller/buyer pair and listing, then walked home page → listing detail → checkout (real delivery-details form) → real Paystack redirect (confirmed genuine: landed on `checkout.paystack.com` with a real reference, since a real `sk_test_...` key is now configured) → payment simulated via signed-webhook-replay (hand-signed `charge.success`, same method as Prompt 14's own verification, since no real Paystack test account can complete an actual card payment from this environment) → order-detail as buyer and seller, both before and after `paid`, specifically re-checking the pre-paid privacy gate at the rendered-page level → mark shipped → confirm delivered → buyer early release. 16 screenshots, full report at `.gstack/qa-reports/qa-report-full-purchase-journey-2026-07-30.md`.
+
+**Result: the two things this session most needed to prove both held.** The pre-paid delivery-privacy gate (Prompt 15's own central concern) rendered correctly at the actual page level — "Delivery details will be shown here once payment is confirmed" for the seller pre-paid, real values the instant the signed webhook confirmed payment — and the full audit trail rendered correctly through every transition (`paid`/System → `shipped`/Seller → `delivered`/Buyer → `released`/Buyer), each with a readable note, on the real page, not just via direct query.
+
+**Two real bugs found, both fixed in the same session (not deferred):**
+1. **ISSUE-001 (Medium):** a listing photo URL outside `next.config.ts`'s `next/image` allowlist doesn't degrade per-image — it throws synchronously during render and took down the *entire* home page (every listing renders in "Recently listed" on that one request), not just its own card. Triggered immediately by leftover QA-fixture data from the Prompt-15 re-verification session, but nothing in the actual write path prevented it, so it wasn't just test debris — a real structural gap. Fixed at three layers sharing one new module (`src/lib/images/allowed-hosts.ts`): `next.config.ts` now derives `remotePatterns` from it instead of a hand-duplicated list; the listing schema rejects a non-allowlisted photo URL at the write boundary; `ListingCard`/`PhotoGallery` both check the URL before ever handing it to `next/image`, so pre-existing or externally-written bad data degrades to the existing "no photo" placeholder instead of crashing the page. See Decision #66.
+2. **ISSUE-002 (Low):** the order-detail page's amount label read "Total paid" even while an order was still `pending`, contradicting the "Awaiting payment" status line directly above it. Now conditional: "Total" pre-paid, "Total paid" from `paid` onward.
+
+**Verified after fixing, live, not just re-reading the diff:** re-inserted a listing with a non-allowlisted photo URL directly via the database (bypassing the app, to specifically exercise the render-path guard against data that predates the fix) — home page returned `200`, rendered normally with an empty photo placeholder in that listing's slot. Checked the amount label on both a fresh `pending` order ("Total") and the fully `released` QA-journey order ("Total paid"). `npx tsc --noEmit`, `npx eslint`, `npm run build` all clean; `npx vitest run` 136/136 (127 before + 8 new `isAllowedImageUrl` tests + 1 new regression test reproducing the exact crash scenario in `schema.test.ts`). Existing schema tests were updated too — they'd used `https://example.com/...` as "valid" fixture photo URLs, which the new guard now correctly rejects, so fixtures were pointed at the real allowlisted host instead.
+
+**Not fixed, deliberately — not app bugs:**
+- Repeated console `400`s loading listing photos — known, pre-existing (documented since Prompt 11's own QA session): seed photo URLs point at Storage paths with no real file uploaded behind them.
+- The browse tool's reported "now at ..." URL after a `click` occasionally lagged behind an in-flight async navigation — a tooling timing quirk, confirmed harmless by re-checking state after a short wait.
+
+**Also confirmed, incidentally, while walking the journey:** `initiateCheckout` → Paystack `initialize` now genuinely succeeds end-to-end with the real key configured (Known Issue #27's internal half) — the browser session actually reached `checkout.paystack.com` with a real reference before Cloudflare's bot-check (expected, external, the reason this session used signed-webhook-replay rather than trying to drive a real card form headlessly).
+
+See `docs/DECISIONS.md` #66.
+
+Committed as `8c71e9c`, pushed to `origin/main`.

@@ -1142,3 +1142,46 @@ the expected `paid` transition *and* a `pending -> paid` row in
 `order_status_transitions` with `actor_role: 'system'`.
 **Revisit:** No — this is the correct, permanent, complete shape for the
 whole order lifecycle's audit trail.
+
+---
+
+## From the post-Prompt-15 QA session
+
+### 66. Image-host validation is a single shared module, enforced at both the write boundary and every render site — not just one or the other
+**Why:** a full-browser QA pass walking the real purchase journey (buy →
+signed-webhook-replay → ship → deliver → release) found that a listing
+photo URL outside `next.config.ts`'s `images.remotePatterns` allowlist
+doesn't degrade per-image — `next/image` throws synchronously during
+render, which 500'd the *entire* home page (every listing in "Recently
+listed" renders on that one request), not just the offending card. This
+was triggered by leftover QA-fixture data, but nothing in the actual write
+path prevented it: `createListing`/`updateListing` never checked a photo
+URL's host against the configured allowlist before persisting it.
+Fixing only the write path would have left existing/externally-written
+bad data (exactly what triggered this) able to crash the page again;
+fixing only the render path would have left the schema silently accepting
+URLs it can never safely display. Both were needed, and both needed to
+agree on the *same* allowlist as `next.config.ts` itself, so a new shared
+module (`src/lib/images/allowed-hosts.ts`, `isAllowedImageUrl()` /
+`getAllowedImageHosts()`) became the single source of truth: `next.config.ts`
+now derives `remotePatterns` from it instead of a hand-duplicated array,
+`src/lib/listings/schema.ts` rejects a non-allowlisted photo URL via a Zod
+`.refine()` (closing the write path), and `ListingCard`/`PhotoGallery`
+both check the URL before ever handing it to `next/image` (closing the
+render path for data that predates or bypasses the write guard — the
+layer that actually stops the crash for data already in the database).
+`PhotoGallery` deliberately doesn't filter the `photoUrls` array to drop
+bad entries — `flawPhotoIndexes` indexes into the original array position,
+so a skipped photo renders an empty slot rather than shifting every later
+index's flaw tag onto the wrong photo.
+**Verified live, not just by the new unit tests:** a listing with
+`photo_urls: ["https://example.com/..."]` was inserted directly via the
+database (bypassing the app, to specifically exercise the render-path
+guard against pre-existing bad data rather than data the write guard would
+now reject) — the home page returned `200` and rendered the listing
+normally with an empty photo placeholder, exactly the existing "no photo"
+state, not a crash.
+**Revisit:** No, unless a future prompt adds a second `next/image`-rendering
+surface for listing photos outside `ListingCard`/`PhotoGallery` — that
+surface must import the same `isAllowedImageUrl` guard, never re-derive
+its own allowlist check.
