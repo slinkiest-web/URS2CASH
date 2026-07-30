@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/expire-pending-orders",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/auto-release-orders",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

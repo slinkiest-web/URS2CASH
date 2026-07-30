@@ -135,14 +135,27 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     underlying base-table gap is now sitting behind real payment data
     instead of only `pending` test rows. Should be closed as part of the
     very next order-detail read surface, not deferred again.
+    **Status:** RESOLVED (Prompt 15). `orders_participant_view`
+    (`20260729120000_orders_participant_view.sql`) nulls the four
+    `delivery_*` columns for the seller when `status = 'pending'`; the
+    buyer always sees her own values. `getOrderDetail`/`getOrdersAsSeller`/
+    `getOrdersAsBuyer` all read exclusively through the view, never the base
+    table. Verified live at both the raw-view level (seller/buyer/anon, all
+    three angles) and the actual page-render level (a fresh listing +
+    pending order showed no delivery fields to the seller, then showed them
+    in full immediately after the same order was flipped to `paid`).
 
 15. **`orders.tracking_note`'s "≥3 characters, required when marking shipped" rule (Epic D3 AC2) has no database-level enforcement.**
     Unlike `listings.condition_notes`, the PRD doesn't use "enforced by...
     database constraint" language for this one, so it was left entirely to
     the future ship-transition server action — consistent with this
     migration's "no business logic yet" scope.
-    **Status:** open, by design. Revisit only if a future prompt decides
-    this specific rule also needs a DB-level backstop.
+    **Status:** RESOLVED (Prompt 15). `orders_tracking_note_length` CHECK
+    constraint added in `20260729110000_order_transitions.sql`
+    (`tracking_note is null or char_length(trim(tracking_note)) >= 3`),
+    same defense-in-depth posture as `condition_notes`' own constraint
+    (Prompt 4) — the Zod boundary in `markShipped` is the primary
+    enforcement, this is the backstop.
 
 ## From Prompt 6
 
@@ -272,7 +285,10 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     today would land on a 404. §10 Epic D2 AC7 ("reads order status and
     displays it... fails if the callback page writes any state") is the
     actual spec for this page.
-    **Status:** open, explicitly Prompt 14's scope per its own task brief.
+    **Status:** RESOLVED (Prompt 15). `src/app/(buyer)/orders/[id]/page.tsx`
+    is a pure Server Component read (no mutation on render), satisfying
+    "writes no state" structurally, and displays order status + full
+    transition history.
 
 27. **No live end-to-end test of a successful Paystack `initialize` → hosted payment page → `charge.success` webhook exists, and currently can't.**
     This environment has no real Paystack account/test API keys. Every live
@@ -323,3 +339,31 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     **Status:** open. Revisit deliberately when Epic E1/E2 (or a dedicated
     admin-alerting surface) is actually designed — don't let the
     `processed_at IS NULL` convention become permanent by default.
+
+## From Prompt 15
+
+30. **No `payouts` row is created on `released` (§10 Epic D4 AC3/AC4).**
+    Deliberately out of scope — this prompt's own context handoff names
+    "delivery-and-release payout creation" as the *next* prompt's job.
+    Neither `releaseOrder` (buyer early-release) nor the 72-hour
+    auto-release cron path writes to `payouts`; both perform only the
+    state transition. A `released` order today has no corresponding payout
+    record at all, queued or otherwise.
+    **Status:** open, explicitly next prompt's scope.
+
+31. **No email sent to the buyer on ship or to the seller on release (§10 Epic D3 AC5, §10 Epic D4 AC7).**
+    Same underlying gap as issue #28 (no transactional email infra exists
+    anywhere yet) — `order_shipped`/`order_delivered`/`order_released`
+    fire as analytics events only.
+    **Status:** open, same remedy as #28 — build alongside real Resend
+    integration, queued rather than inlined into any request path.
+
+32. **The external half of Vercel Cron's actual invocation method (GET vs the PRD's documented POST) is unverified against a real deployed Vercel cron job.**
+    Both routes export both `GET` and `POST` handlers specifically to
+    de-risk this (Decision #63), based on Vercel's own current
+    documentation, not a live Vercel deployment of this project. Low risk
+    given both methods are wired identically, but worth a real check once
+    this project actually deploys to Vercel with `vercel.json`'s cron
+    config live.
+    **Status:** open, low priority — will self-resolve (or reveal a
+    problem) the first time this project deploys to Vercel for real.

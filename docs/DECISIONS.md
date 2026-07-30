@@ -1011,3 +1011,134 @@ RPC call, not assumed from reading the migration.
 ever needs a second caller (e.g. an admin action that also transitions
 orders), grant `EXECUTE` to that specific, narrow context — never widen
 back to the Postgres default.
+
+---
+
+## From Prompt 15
+
+### 61. `delivered` is a real, persisting state; release happens via buyer early-release or a 72-hour auto-release, never in the same instant as delivery confirmation
+**Why:** a genuine conflict, surfaced before writing any code and resolved
+via AskUserQuestion rather than guessed — §10 Epic D4 AC2's literal text
+("`delivered` transitions immediately to `released`, `released_at` set")
+reads as zero elapsed time, ever. But §10 Epic D5 AC1 says a dispute "may
+be raised on... `delivered`, within 7 days of `delivered_at`... whichever
+is first" — which only makes sense if an order can actually sit in
+`delivered` status long enough for someone to act on it. If AC2 meant
+literally instantaneous, no order would ever be observably `delivered`
+before becoming `released` (and D5 AC7: "once released, the dispute action
+is not available"), making D5 AC1's "delivered" branch permanently dead.
+Resolved by reading AC2's "immediately" as "automatic, no admin-approval
+gate" (contrasted with a hypothetical manual-release design, matching how
+AC3 separately emphasizes "AC3 fails if the payout row is created by an
+admin action") rather than "zero elapsed time" — this is the interpretation
+the user chose. The specific window (72 hours) is **not sourced anywhere in
+the PRD** — grepped every occurrence of "72 hour," all are about unrelated
+KPIs (shipping-speed falsifiers, rating-reminder emails). It comes from
+this prompt's own task brief and is documented here as an explicit,
+flagged assumption, not a PRD citation, centralized in
+`src/lib/orders/timing-config.ts`'s `DELIVERED_AUTO_RELEASE_HOURS`.
+**Revisit:** the 72-hour figure specifically, if the PRD is ever amended to
+state one explicitly — until then, this is the agreed value, not a
+placeholder to silently drift away from.
+
+### 62. `order_status_transitions` (audit table) and `orders_participant_view` (privacy gate) both built despite not being in PRD §7.1
+**Why, the audit table:** grepped the whole PRD for "audit"/"transition
+log"/"order_events" — zero hits, same finding as Decisions #21/#59. Built
+anyway, unlike those two prior invented-table cases, because this prompt's
+own instructions are qualitatively different: not a single passing mention
+buried in a longer list (Prompt 14's "order_events" bullet), but three
+separate, explicit statements ("every state transition is recorded... no
+exceptions", "records the transition" as its own bullet for both
+`markShipped` and `confirmDelivery`, "a transition without an audit record
+is a bug"). More importantly, there's a genuine structural gap the
+existing `orders` timestamp columns cannot close: §8.1's own state table
+lists `delivered` as enterable by "Buyer, or auto release" — two different
+actors that would set the identical `delivered_at` column, with nothing to
+tell them apart afterward. `expired` and `cancelled` have no dedicated
+timestamp column on `orders` at all, so for those, this table is the
+*only* timing record, not merely a supplementary actor record. Every
+insert happens inside the same atomic function as the state change itself
+(`mark_order_shipped`, `confirm_order_delivered`, `release_order`,
+`expire_pending_order`, `auto_advance_shipped_to_delivered` — all in
+`20260729110000_order_transitions.sql`), matching `mark_order_paid`'s
+established shape (Decision #60): `WHERE status = <expected prior
+status>` is itself the "only allowed §8 transitions may occur" enforcement,
+atomically, with no separate pre-check-then-write race window.
+**Why, the view:** closes Known Issue #14 (open since Prompt 5, deferred
+through Prompts 13/14 for lack of a real consumer to design it against).
+Same "public-column-privacy pattern" as `profiles_public`/`ratings_public`
+(Decisions #1/#24) — RLS is row-level only and cannot express "hide column
+X on this row unless status = Y," so a view does the column-level masking
+RLS structurally can't. Only the seller's view of the buyer's `delivery_*`
+columns is gated pre-`paid`; the buyer always sees her own submitted data,
+since hiding it from herself protects nothing §9.1 is actually concerned
+with. Verified live from all four angles: seller sees `null` on a
+`pending` order, sees real values once `paid`, buyer always sees her own
+values regardless of status, and an anonymous request is flatly denied
+(`permission denied for view`, since only `authenticated` was granted
+`SELECT`, not `anon`).
+**Revisit:** No for either — these are now the permanent mechanisms.
+
+### 63. Cron routes export both `GET` and `POST` handlers
+**Why:** checked Vercel's own documentation before building (not assumed):
+"Vercel makes an HTTP GET request to your project's production deployment
+URL" to trigger a cron job — this is Vercel's actual, native invocation
+mechanism. PRD §11.1's own route table lists these two routes as `POST`.
+Rather than gamble on which is authoritative for the deployed environment
+(and risk cron jobs silently 405ing in production, never firing, with no
+obvious symptom until orders pile up unprocessed), both methods are wired
+to the identical handler function. The `Authorization: Bearer
+$CRON_SECRET` header Vercel sends is identical regardless of method, so
+`isAuthorizedCronRequest` needs no method-specific logic.
+**Revisit:** No — low cost, meaningfully de-risks a silent production
+failure mode. If Vercel's behavior is ever confirmed to have changed,
+revisit then, not preemptively.
+
+### 64. A missing table-level `GRANT` on `order_status_transitions` was caught live, not by inspection — the exact bug class this project already has a name for
+**Why this is worth its own entry, not just a bugfix note:** the
+un-numbered grants-fix session (between Prompts 8 and 9) already
+discovered and documented, project-wide, that Postgres checks table-level
+grants *before* evaluating RLS — a correct RLS policy with no matching
+`GRANT` still denies everything. `docs/PROJECT_STATUS.md` §4 has carried
+"Table GRANTs are not optional even with correct RLS" as a standing
+architectural note ever since. Despite that precedent being fully written
+down, `order_status_transitions`'s own migration
+(`20260729110000_order_transitions.sql`) still shipped without the
+`GRANT SELECT ... TO authenticated` line — caught only because this
+prompt's live verification actually queried the table as a real
+`authenticated` session (`permission denied for table
+order_status_transitions`, with Postgres's own hint literally spelling out
+the fix), not because the precedent was re-read at write time. Fixed
+immediately, both live (direct `GRANT`) and in the migration file itself
+before commit — the file in git now matches what's actually running, per
+this project's own HARD RULE that the SQL is committed, not patched ad hoc
+against a dashboard.
+**Revisit:** No fix needed beyond what's done. Worth internalizing as a
+literal checklist item — *every* new table/view this project adds needs an
+explicit grep for "grant select" in its own migration before being
+considered done, not just a mental note that the precedent exists.
+
+### 65. `mark_order_paid` (Prompt 14) retrofitted to also write an `order_status_transitions` row
+**Why:** `order_status_transitions` didn't exist when Prompt 14 shipped, so
+the very first transition in the order lifecycle (`pending` -> `paid`) was
+the one gap left once this prompt made every other transition audit-
+recorded. Given this prompt's own repeated, explicit "no exceptions"
+instruction, leaving the first transition unrecorded purely because the
+table postdates the code performing it would itself be exactly the kind of
+exception that instruction exists to close. `paid_at` +
+`webhook_events.payload` already gave this transition *some* durable
+record (Decision #59's reasoning stands — this isn't a reversal of that,
+just an addition), so this is about consistency across the full lifecycle,
+not a claim the old mechanism was ever wrong. Implemented as a **new**
+migration (`20260729130000_mark_order_paid_audit_trail.sql`) that
+`CREATE OR REPLACE`s the existing function — the already-applied,
+already-pushed `20260729100000_mark_order_paid_function.sql` is never
+edited in place, same discipline this project has followed for every
+prior in-place function/policy change (e.g. Decision #45's widened RLS
+policy, its own new migration rather than a rewrite of Prompt 4's). Grants
+re-stated explicitly rather than assumed to survive `CREATE OR REPLACE`
+untouched. Verified live: a fresh signed webhook payload now produces both
+the expected `paid` transition *and* a `pending -> paid` row in
+`order_status_transitions` with `actor_role: 'system'`.
+**Revisit:** No — this is the correct, permanent, complete shape for the
+whole order lifecycle's audit trail.

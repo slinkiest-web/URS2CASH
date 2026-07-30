@@ -1,12 +1,21 @@
 "use server";
 
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkoutInputSchema, type CheckoutInput } from "@/lib/orders/checkout-schema";
+import { SHIPPED_AUTO_RELEASE_DAYS } from "@/lib/orders/timing-config";
+import { trackOrderReleased } from "@/lib/orders/order-events";
 import { computeCommission } from "@/lib/money";
 import { initializeTransaction } from "@/lib/paystack";
 import { track } from "@/lib/analytics/events";
 import { ok, err, type Result } from "@/lib/result";
+
+const trackingNoteSchema = z
+  .string()
+  .trim()
+  .min(3, "Enter a tracking note of at least 3 characters.")
+  .max(500, "Tracking note must be at most 500 characters.");
 
 /**
  * PRD §11.2: initiateCheckout(input): Result<{ authorizationUrl, orderId }>.
@@ -156,4 +165,178 @@ export async function initiateCheckout(
   }
 
   return ok({ authorizationUrl: init.authorizationUrl, orderId: order.id });
+}
+
+/**
+ * PRD §11.2: markShipped(orderId, trackingNote): Result<void>. §10 Epic D3.
+ *
+ * Every legal transition is enforced atomically by `mark_order_shipped`
+ * (only callable via the service-role client — Prompt 15's migration) and
+ * recorded in `order_status_transitions` in the same transaction as the
+ * status change: "every state transition is recorded... no exceptions."
+ * The pre-checks below (not found / not the seller / not `paid`) exist for
+ * clearer error messages only — the RPC's own `WHERE seller_id = ... AND
+ * status = 'paid'` is the actual, race-safe enforcement.
+ */
+export async function markShipped(orderId: string, trackingNote: string): Promise<Result<void>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return err("not_authenticated", "Sign in to manage this order.");
+  }
+
+  const parsed = trackingNoteSchema.safeParse(trackingNote);
+  if (!parsed.success) {
+    return err("invalid_input", parsed.error.issues[0]?.message ?? "Enter a tracking note.");
+  }
+
+  const service = createServiceClient();
+  const { data: order } = await service
+    .from("orders")
+    .select("id, seller_id, status, paid_at")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (!order) {
+    return err("not_found", "Order not found.");
+  }
+  if (order.seller_id !== user.id) {
+    return err("not_authorized", "Only the seller can mark this order shipped.");
+  }
+  if (order.status !== "paid") {
+    return err("invalid_transition", "This order isn't ready to be marked shipped.");
+  }
+
+  // §8.1 HARD RULE: auto_release_at = shipped_at + 7 days. Computed here,
+  // in TypeScript, from the single config source — never hardcoded in SQL.
+  const autoReleaseAt = new Date(Date.now() + SHIPPED_AUTO_RELEASE_DAYS * 86_400_000).toISOString();
+
+  const { data: transitioned, error } = await service.rpc("mark_order_shipped", {
+    p_order_id: orderId,
+    p_seller_id: user.id,
+    p_tracking_note: parsed.data,
+    p_auto_release_at: autoReleaseAt,
+  });
+
+  if (error || !transitioned || transitioned.length === 0) {
+    return err("invalid_transition", "This order isn't ready to be marked shipped.");
+  }
+
+  // §10 Epic D3 AC4.
+  const hoursSincePaid = order.paid_at ? Math.round((Date.now() - new Date(order.paid_at).getTime()) / 3_600_000) : 0;
+  track("order_shipped", { order_id: orderId, hours_since_paid: hoursSincePaid });
+
+  return ok(undefined);
+}
+
+/**
+ * PRD §11.2: confirmDelivery(orderId): Result<void>. §10 Epic D4 AC1.
+ *
+ * Sets `delivered`/`delivered_at` only — does not cascade to `released`.
+ * Release happens via a separate, explicit `releaseOrder` call (buyer
+ * early release) or the 72-hour auto-release cron. See
+ * docs/DECISIONS.md #61 for why this is the confirmed design, not a
+ * literal reading of §10 Epic D4 AC2's "immediately."
+ */
+export async function confirmDelivery(orderId: string): Promise<Result<void>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return err("not_authenticated", "Sign in to manage this order.");
+  }
+
+  const service = createServiceClient();
+  const { data: order } = await service
+    .from("orders")
+    .select("id, buyer_id, status, shipped_at")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (!order) {
+    return err("not_found", "Order not found.");
+  }
+  if (order.buyer_id !== user.id) {
+    return err("not_authorized", "Only the buyer can confirm delivery.");
+  }
+  if (order.status !== "shipped") {
+    return err("invalid_transition", "This order isn't ready to confirm delivery.");
+  }
+
+  const { data: transitioned, error } = await service.rpc("confirm_order_delivered", {
+    p_order_id: orderId,
+    p_buyer_id: user.id,
+  });
+
+  if (error || !transitioned || transitioned.length === 0) {
+    return err("invalid_transition", "This order isn't ready to confirm delivery.");
+  }
+
+  const hoursSinceShipped = order.shipped_at
+    ? Math.round((Date.now() - new Date(order.shipped_at).getTime()) / 3_600_000)
+    : 0;
+  track("order_delivered", { order_id: orderId, hours_since_shipped: hoursSinceShipped });
+
+  return ok(undefined);
+}
+
+/**
+ * Buyer early release: `delivered` -> `released`, before the auto-release
+ * window elapses (item 3 — "optional immediate release"). Not literally
+ * named in PRD §11.2's own Orders action list (that table only enumerates
+ * `markShipped`/`confirmDelivery`/`cancelOrder`/`raiseDispute`), but this
+ * prompt's own brief explicitly asks for it and the naming follows the
+ * same convention as its neighbors.
+ *
+ * Payout creation (§10 Epic D4 AC3/AC4) is deliberately NOT done here —
+ * out of this prompt's stated scope per its own context handoff ("the next
+ * prompt builds delivery-and-release payout creation"). `release_order`
+ * only performs the state transition; nothing here writes to `payouts`.
+ */
+export async function releaseOrder(orderId: string): Promise<Result<void>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return err("not_authenticated", "Sign in to manage this order.");
+  }
+
+  const service = createServiceClient();
+  const { data: order } = await service
+    .from("orders")
+    .select("id, buyer_id, listing_id, status")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (!order) {
+    return err("not_found", "Order not found.");
+  }
+  if (order.buyer_id !== user.id) {
+    return err("not_authorized", "Only the buyer can release this order.");
+  }
+  if (order.status !== "delivered") {
+    return err("invalid_transition", "This order isn't ready to be released.");
+  }
+
+  const { data: transitioned, error } = await service.rpc("release_order", {
+    p_order_id: orderId,
+    p_actor_role: "buyer",
+    p_actor_id: user.id,
+  });
+
+  const releasedOrder = transitioned?.[0];
+  if (error || !releasedOrder) {
+    return err("invalid_transition", "This order isn't ready to be released.");
+  }
+
+  await trackOrderReleased(service, releasedOrder);
+
+  return ok(undefined);
 }

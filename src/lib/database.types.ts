@@ -119,6 +119,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "disputes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders_participant_view"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "disputes_raised_by_fkey"
             columns: ["raised_by"]
             isOneToOne: false
@@ -287,6 +294,68 @@ export type Database = {
             columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_status_transitions: {
+        Row: {
+          actor_id: string | null
+          actor_role: string
+          created_at: string
+          from_status: string
+          id: string
+          note: string | null
+          order_id: string
+          to_status: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_role: string
+          created_at?: string
+          from_status: string
+          id?: string
+          note?: string | null
+          order_id: string
+          to_status: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_role?: string
+          created_at?: string
+          from_status?: string
+          id?: string
+          note?: string | null
+          order_id?: string
+          to_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_status_transitions_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_status_transitions_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_status_transitions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_status_transitions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_participant_view"
             referencedColumns: ["id"]
           },
         ]
@@ -499,6 +568,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "payouts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders_participant_view"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "payouts_paid_by_fkey"
             columns: ["paid_by"]
             isOneToOne: false
@@ -626,6 +702,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ratings_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders_participant_view"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ratings_rater_id_fkey"
             columns: ["rater_id"]
             isOneToOne: false
@@ -687,6 +770,114 @@ export type Database = {
       }
     }
     Views: {
+      orders_participant_view: {
+        Row: {
+          amount_kobo: number | null
+          auto_release_at: string | null
+          buyer_id: string | null
+          commission_kobo: number | null
+          created_at: string | null
+          delivered_at: string | null
+          delivery_address: string | null
+          delivery_name: string | null
+          delivery_phone: string | null
+          delivery_state: string | null
+          disputed_at: string | null
+          id: string | null
+          listing_id: string | null
+          paid_at: string | null
+          refunded_at: string | null
+          released_at: string | null
+          seller_id: string | null
+          seller_payout_kobo: number | null
+          shipped_at: string | null
+          status: string | null
+          tracking_note: string | null
+        }
+        Insert: {
+          amount_kobo?: number | null
+          auto_release_at?: string | null
+          buyer_id?: string | null
+          commission_kobo?: number | null
+          created_at?: string | null
+          delivered_at?: string | null
+          delivery_address?: never
+          delivery_name?: never
+          delivery_phone?: never
+          delivery_state?: never
+          disputed_at?: string | null
+          id?: string | null
+          listing_id?: string | null
+          paid_at?: string | null
+          refunded_at?: string | null
+          released_at?: string | null
+          seller_id?: string | null
+          seller_payout_kobo?: number | null
+          shipped_at?: string | null
+          status?: string | null
+          tracking_note?: string | null
+        }
+        Update: {
+          amount_kobo?: number | null
+          auto_release_at?: string | null
+          buyer_id?: string | null
+          commission_kobo?: number | null
+          created_at?: string | null
+          delivered_at?: string | null
+          delivery_address?: never
+          delivery_name?: never
+          delivery_phone?: never
+          delivery_state?: never
+          disputed_at?: string | null
+          id?: string | null
+          listing_id?: string | null
+          paid_at?: string | null
+          refunded_at?: string | null
+          released_at?: string | null
+          seller_id?: string | null
+          seller_payout_kobo?: number | null
+          shipped_at?: string | null
+          status?: string | null
+          tracking_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles_public: {
         Row: {
           avatar_url: string | null
@@ -769,6 +960,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ratings_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders_participant_view"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ratings_rater_id_fkey"
             columns: ["rater_id"]
             isOneToOne: false
@@ -800,9 +998,179 @@ export type Database = {
       }
     }
     Functions: {
+      auto_advance_shipped_to_delivered: {
+        Args: { p_order_id: string }
+        Returns: {
+          amount_kobo: number
+          auto_release_at: string | null
+          buyer_id: string
+          commission_kobo: number
+          created_at: string
+          delivered_at: string | null
+          delivery_address: string
+          delivery_name: string
+          delivery_phone: string
+          delivery_state: string
+          disputed_at: string | null
+          id: string
+          listing_id: string
+          paid_at: string | null
+          paystack_reference: string | null
+          refunded_at: string | null
+          released_at: string | null
+          seller_id: string
+          seller_payout_kobo: number
+          shipped_at: string | null
+          status: string
+          tracking_note: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      confirm_order_delivered: {
+        Args: { p_buyer_id: string; p_order_id: string }
+        Returns: {
+          amount_kobo: number
+          auto_release_at: string | null
+          buyer_id: string
+          commission_kobo: number
+          created_at: string
+          delivered_at: string | null
+          delivery_address: string
+          delivery_name: string
+          delivery_phone: string
+          delivery_state: string
+          disputed_at: string | null
+          id: string
+          listing_id: string
+          paid_at: string | null
+          paystack_reference: string | null
+          refunded_at: string | null
+          released_at: string | null
+          seller_id: string
+          seller_payout_kobo: number
+          shipped_at: string | null
+          status: string
+          tracking_note: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      expire_pending_order: {
+        Args: { p_order_id: string }
+        Returns: {
+          amount_kobo: number
+          auto_release_at: string | null
+          buyer_id: string
+          commission_kobo: number
+          created_at: string
+          delivered_at: string | null
+          delivery_address: string
+          delivery_name: string
+          delivery_phone: string
+          delivery_state: string
+          disputed_at: string | null
+          id: string
+          listing_id: string
+          paid_at: string | null
+          paystack_reference: string | null
+          refunded_at: string | null
+          released_at: string | null
+          seller_id: string
+          seller_payout_kobo: number
+          shipped_at: string | null
+          status: string
+          tracking_note: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       generate_unique_handle: { Args: { base: string }; Returns: string }
       mark_order_paid: {
         Args: { p_order_id: string }
+        Returns: {
+          amount_kobo: number
+          auto_release_at: string | null
+          buyer_id: string
+          commission_kobo: number
+          created_at: string
+          delivered_at: string | null
+          delivery_address: string
+          delivery_name: string
+          delivery_phone: string
+          delivery_state: string
+          disputed_at: string | null
+          id: string
+          listing_id: string
+          paid_at: string | null
+          paystack_reference: string | null
+          refunded_at: string | null
+          released_at: string | null
+          seller_id: string
+          seller_payout_kobo: number
+          shipped_at: string | null
+          status: string
+          tracking_note: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      mark_order_shipped: {
+        Args: {
+          p_auto_release_at: string
+          p_order_id: string
+          p_seller_id: string
+          p_tracking_note: string
+        }
+        Returns: {
+          amount_kobo: number
+          auto_release_at: string | null
+          buyer_id: string
+          commission_kobo: number
+          created_at: string
+          delivered_at: string | null
+          delivery_address: string
+          delivery_name: string
+          delivery_phone: string
+          delivery_state: string
+          disputed_at: string | null
+          id: string
+          listing_id: string
+          paid_at: string | null
+          paystack_reference: string | null
+          refunded_at: string | null
+          released_at: string | null
+          seller_id: string
+          seller_payout_kobo: number
+          shipped_at: string | null
+          status: string
+          tracking_note: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      release_order: {
+        Args: { p_actor_id?: string; p_actor_role: string; p_order_id: string }
         Returns: {
           amount_kobo: number
           auto_release_at: string | null
