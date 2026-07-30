@@ -293,10 +293,11 @@ export async function confirmDelivery(orderId: string): Promise<Result<void>> {
  * prompt's own brief explicitly asks for it and the naming follows the
  * same convention as its neighbors.
  *
- * Payout creation (§10 Epic D4 AC3/AC4) is deliberately NOT done here —
- * out of this prompt's stated scope per its own context handoff ("the next
- * prompt builds delivery-and-release payout creation"). `release_order`
- * only performs the state transition; nothing here writes to `payouts`.
+ * Payout creation (§10 Epic D4 AC3/AC4) happens inside `release_order`
+ * itself (Prompt 16), atomically with the state transition — never here,
+ * never as a follow-up step. The cron auto-release path
+ * (`api/cron/auto-release-orders`) calls the same RPC, so both paths get
+ * identical payout-creation behavior for free (AC5).
  */
 export async function releaseOrder(orderId: string): Promise<Result<void>> {
   const supabase = await createClient();

@@ -526,10 +526,11 @@ export type Database = {
           created_at: string
           failure_note: string | null
           id: string
+          is_blocked: boolean
           order_id: string
           paid_at: string | null
           paid_by: string | null
-          payout_account_id: string
+          payout_account_id: string | null
           seller_id: string
           status: string
         }
@@ -539,10 +540,11 @@ export type Database = {
           created_at?: string
           failure_note?: string | null
           id?: string
+          is_blocked?: boolean
           order_id: string
           paid_at?: string | null
           paid_by?: string | null
-          payout_account_id: string
+          payout_account_id?: string | null
           seller_id: string
           status?: string
         }
@@ -552,10 +554,11 @@ export type Database = {
           created_at?: string
           failure_note?: string | null
           id?: string
+          is_blocked?: boolean
           order_id?: string
           paid_at?: string | null
           paid_by?: string | null
-          payout_account_id?: string
+          payout_account_id?: string | null
           seller_id?: string
           status?: string
         }

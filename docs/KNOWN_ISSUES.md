@@ -349,7 +349,9 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     auto-release cron path writes to `payouts`; both perform only the
     state transition. A `released` order today has no corresponding payout
     record at all, queued or otherwise.
-    **Status:** open, explicitly next prompt's scope.
+    **Status:** resolved, Prompt 16. `release_order()` now creates the
+    `payouts` row atomically, in the same transaction as the transition,
+    for both the buyer and cron paths. See Decisions #67–#70.
 
 31. **No email sent to the buyer on ship or to the seller on release (§10 Epic D3 AC5, §10 Epic D4 AC7).**
     Same underlying gap as issue #28 (no transactional email infra exists

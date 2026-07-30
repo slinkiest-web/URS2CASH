@@ -592,3 +592,39 @@ Not a build prompt — a full-browser walkthrough of the entire purchase journey
 See `docs/DECISIONS.md` #66.
 
 Committed as `8c71e9c`, pushed to `origin/main`.
+
+---
+
+## Prompt 16 — Release-to-payout path (Epic D4 AC3/AC4/AC5)
+
+**Note on process:** routed through `/plan-eng-review` before any code was written, given this touches the atomic order-lifecycle RPCs (Prompt 15) and the money-release path directly. Four architecture decisions were surfaced and resolved via AskUserQuestion (below); an independent outside-voice pass (Claude subagent — Codex CLI not installed in this environment) then caught a real gap the review itself had missed: the task's own "available balance" item (a per-seller sum-of-unpaid-payouts query) had zero callers anywhere in the codebase and was justified by a citation to a nonexistent PRD epic ("E7"). The real admin payout epic is §10 Epic E3, whose actual ACs need a structurally different query (a per-payout list plus a cross-seller total, not a per-seller sum) — cut from this prompt entirely rather than ship the wrong shape. Full design doc + review report: `~/.gstack/projects/slinkiest-web-URS2CASH/bon-main-design-20260730-180110.md`.
+
+**Completed:**
+- Migration `supabase/migrations/20260730140000_release_order_payout_creation.sql`: `payouts.payout_account_id` dropped to nullable (deviates from PRD §7.1's literal `NOT NULL`, same class of deviation as Decision #54 — required because AC4 demands a payout row even when the seller has zero `payout_accounts` rows at all, not just an unverified one); new `payouts.is_blocked boolean not null default false`, snapshotted once at insert time (true when no verified account was found).
+- `release_order()` (Prompt 15) rewritten in place via `CREATE OR REPLACE FUNCTION` — never edits the already-applied `20260729110000_order_transitions.sql`, same discipline as Decision #65's retrofit. The `UPDATE orders SET status='released'...` now has a `RETURNING seller_id, seller_payout_kobo INTO ...` clause (it previously had none — a real piece of new plumbing, not a restatement, caught by the outside-voice pass on the first pseudocode draft). After the existing `order_status_transitions` insert, the function resolves the seller's payout account (`ORDER BY created_at DESC, id DESC LIMIT 1 WHERE is_verified = true` — a deterministic "most recent verified account" rule, since `payout_accounts.profile_id` has no unique constraint, tracked as `docs/TODOS.md` #1) and inserts the `payouts` row in the same transaction, before returning. `EXECUTE` stays revoked from `public`/`anon`/`authenticated`, granted only to `service_role`, unchanged from Prompt 15.
+- Both existing call sites (`releaseOrder` in `src/lib/actions/orders.ts`, the cron in `src/app/api/cron/auto-release-orders/route.ts`) already called this one function — zero changes needed to either beyond updating `releaseOrder`'s stale doc comment (it previously said payout creation was "deliberately NOT done here... the next prompt's scope"), so AC5 ("the cron path follows the same path") is satisfied structurally, not by parallel implementation.
+- `order_released` firing with `days_listing_to_sale` (this prompt's own item 3) was already fully built in Prompt 15 (`src/lib/orders/order-events.ts`'s `trackOrderReleased`) — confirmed via `/plan-eng-review`'s Step 0 before writing anything, no changes needed.
+- `database.types.ts` regenerated via the real Supabase CLI against local Postgres (not hand-edited) — `payout_account_id: string | null`, `is_blocked: boolean` both present.
+
+**Cut from this prompt (see Decisions, this session):** the "available balance" query the task itself asked for. Not PRD-sourced (grepped `urs2cash-prd.md`, zero hits on "balance" as a seller-facing concept), and its only stated justification ("the same shape a future admin payout queue needs") was checked against the PRD and found wrong — Epic E3's actual ACs need a per-payout list and a cross-seller total, not this shape. Ships with zero callers either way today. Building the wrong shape now would have created false confidence that "the balance piece" is done; the real query should be built against E3's actual spec when that epic is scheduled.
+
+**Verified live, against local Postgres, before writing this entry:**
+- Buyer early-release (`p_actor_role = 'buyer'`) and cron auto-release (`p_actor_role = 'system'`) both exercised directly via `release_order()` — each produced exactly one `payouts` row in the same call as the `orders` status flip to `released`, never as a separate step.
+- A seller with **zero** `payout_accounts` rows: payout created, `payout_account_id` NULL, `is_blocked = true`.
+- A seller with **only an unverified** `payout_accounts` row: payout created, `payout_account_id` set to that row, `is_blocked = true`.
+- A seller with **two verified** `payout_accounts` rows at different `created_at`: payout correctly referenced the more recently created one.
+- Idempotency: calling `release_order()` a second time against an already-`released` order returned zero rows (the `WHERE status = 'delivered'` guard, unchanged from Prompt 15) — confirmed exactly one `payouts` row exists per order afterward, no duplicate-insert risk even under a retried call.
+- `order_status_transitions` audit rows confirmed correct for both actor paths (`buyer`/"Buyer released funds early", `system`/"Auto-released after the delivered window elapsed with no dispute") — unaffected by this change, still firing correctly.
+- Test fixtures (4 `auth.users`/`profiles` rows, 1 category, 3 listings, 3 orders, 3 `payout_accounts` rows) all cleaned up after verification — confirmed zero leftover rows.
+
+**Also verified:** `npx tsc --noEmit`, scoped `npx eslint "src/**/*.{ts,tsx}"`, `npx vitest run` (136/136, unchanged — no new unit tests needed since the balance function was cut and the SQL-level behavior was live-verified per this session's own Test Strategy decision, consistent with every prior migration in this project), `npm run build` all clean.
+
+**Test strategy note (a deliberate decision, not an oversight):** `release_order()`'s new payout-creation branches were verified by hand against local Postgres, exactly like every migration in this project since Prompt 4 — not added to the persisted `vitest` suite. There is no CI pipeline and `npm run test` has zero external dependencies today; a DB-hitting test file would silently require Docker/Supabase to be running for anyone who runs `npm run test` going forward. Tracked as `docs/TODOS.md` #2 for reconsideration once CI exists.
+
+**Known gaps, flagged rather than silently accepted:**
+- `payout_accounts.profile_id` has no unique constraint — `docs/TODOS.md` #1.
+- No persisted Postgres-integration test suite — `docs/TODOS.md` #2.
+
+**Next prompt should build:** disputes (§10 Epic D5) — `raiseDispute`, the 7-day window, freezing payout creation for a disputed order, and holding any `payouts` row that's already `queued` (§8.4 HARD RULE: "a payout row is never created for a disputed order until resolution"; §10 Epic D5 AC3: "if a payout row exists and is `queued`, it is held and flagged"). The cron auto-transitions already correctly skip `disputed` orders (verified live in Prompt 15) — this is about building the path that gets an order *into* that status, and deciding how an already-`queued` payout gets "held" given `payouts.status` today only has `queued`/`paid`/`failed` (no `held` value yet — a genuine design decision for that prompt, not resolved here).
+
+See `docs/DECISIONS.md` #67–#70 for this prompt's design choices.

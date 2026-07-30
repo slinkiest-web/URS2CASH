@@ -1185,3 +1185,99 @@ state, not a crash.
 surface for listing photos outside `ListingCard`/`PhotoGallery` — that
 surface must import the same `isAllowedImageUrl` guard, never re-derive
 its own allowlist check.
+
+---
+
+## From Prompt 16
+
+Routed through `/plan-eng-review` before any code was written, given this
+touches the atomic order-lifecycle RPCs (Prompt 15) and the money-release
+path directly. Four architecture decisions below were surfaced and resolved
+via AskUserQuestion; an independent outside-voice pass (Claude subagent —
+Codex CLI not installed) then caught a real gap in Decision #70 below that
+the review itself had missed. Full design doc + review report:
+`~/.gstack/projects/slinkiest-web-URS2CASH/bon-main-design-20260730-180110.md`.
+
+### 67. `payouts.payout_account_id` made nullable, deviating from PRD §7.1's literal `NOT NULL`
+**Why:** §10 Epic D4 AC4 requires creating the queued payout row even when
+the seller has **zero** `payout_accounts` rows at all (not just an
+unverified one) — there's nothing to reference in that case, and nothing
+in the schema forces every seller to have a row (a seller who never added
+bank details has none). PRD §7.1's literal table and the original
+migration (Prompt 5) both specify `NOT NULL`. Same class of deliberate,
+flagged deviation as Decision #54 (`orders.listing_id`'s blanket `UNIQUE`)
+— surfaced via `/plan-eng-review` before writing any code, not silently
+changed. `release_order()` (Decision #70) inserts `NULL` when the seller
+has no verified `payout_accounts` row.
+**Revisit:** No — this is the correct, permanent shape for AC4's literal
+requirement.
+
+### 68. `payouts.is_blocked` is a snapshotted boolean, computed once at insert time — not a derived join, not a new flags table
+**Why:** §10 Epic D4 AC4 requires the payout be "flagged in admin as
+blocked" when the seller has no verified account, but Epic E (admin)
+doesn't exist yet, so "flagged in admin" needed a concrete, minimal
+interpretation — same class of judgment call as Decision #58's
+amount-mismatch flag. Considered deriving "blocked" via a join at every
+read site (`payout_account_id IS NULL OR NOT payout_accounts.is_verified`)
+instead of a new column — rejected because it requires every future
+consumer to remember the join logic, and this schema already has an
+established, repeatedly-used pattern of snapshotting facts at creation
+time rather than recomputing them (`commission_kobo`, `seller_payout_kobo`,
+§8.3). `release_order()` computes `is_blocked` once, at the moment the
+payout row is created, directly serving §10 Epic E3 AC2's future "visually
+flagged and not actionable" with a plain `WHERE is_blocked` — no join
+required. Known, accepted tradeoff: if a seller verifies their account
+*after* this payout row already exists, the snapshot does not retroactively
+flip — identical behavior to every other snapshotted column in this
+schema.
+**Revisit:** No, unless a future prompt decides snapshotted-at-creation is
+wrong for this specific column (e.g. Epic E3 needs it to reflect current
+verification status, not creation-time status) — that would be a
+deliberate reversal, not a bug fix.
+
+### 69. Seller's payout account resolved as "most recently created verified row," not enforced-unique
+**Why:** `payout_accounts.profile_id` has no unique constraint (Prompt 2) —
+a seller could in principle have more than one row (e.g. re-resolved a new
+bank account after a mistake), but §10 Epic D4 AC3 says "the seller's
+verified payout account" (singular). Considered adding a unique constraint
+now to remove the ambiguity structurally — rejected as scope creep into
+Epic A3's table/action code, unrequested by this prompt's task, and risky
+without a data-cleanup step first if any live seller already has 2+ rows.
+`release_order()` instead resolves via `ORDER BY created_at DESC, id DESC
+LIMIT 1 WHERE is_verified = true` — correct for the realistic case (a
+seller updating their bank details), with `id DESC` added as a
+deterministic tiebreaker on a same-timestamp collision, at zero cost.
+Deferred to `docs/TODOS.md` #1.
+**Revisit:** Yes, if `docs/TODOS.md` #1 (the unique constraint) is ever
+built — at that point this resolution logic becomes unnecessary defensive
+code, not wrong, just redundant.
+
+### 70. "Available balance" (this prompt's own task item) cut entirely, not built in any form
+**Why:** the task's literal spec — "sum of `seller_payout_kobo` across
+released orders not present in any completed or processing payout" — is
+not PRD-sourced (grepped `urs2cash-prd.md`, zero hits on "balance" as a
+seller-facing concept) and becomes structurally meaningless the instant
+every released order gets an immediate `payouts` row (exactly what
+Decisions #67–#69 make true): it would return ~0 for anything released
+after this prompt, since there'd almost never be a released order *without*
+a payout row to exclude it via. The initial `/plan-eng-review` resolution
+was to redefine it as `sum(payouts.amount_kobo) WHERE seller_id = X AND
+status = 'queued'`, justified as "the same shape a future admin payout
+queue needs." **An independent outside-voice pass (Claude subagent, run as
+a standard part of `/plan-eng-review`) checked that specific claim against
+the actual PRD and found it wrong**: the real admin payout epic is §10
+Epic E3 (the review's citation of "E7" doesn't exist anywhere in the PRD —
+Epic E's real items are E1–E5), and E3's actual ACs need a per-payout list
+(AC1: seller, masked account, amount, days-since-release) plus a total
+**across all sellers** (AC7: "the queue displays total kobo outstanding")
+— a structurally different query than a per-seller `sum(queued)`. Nothing
+in the codebase called any balance function either way. Presented to the
+user as a cross-model tension (the review's own recommendation vs. the
+outside voice's correction); resolved in favor of the outside voice —
+cut entirely rather than ship a shape nothing needs, justified by a wrong
+citation. This is the first time in this project's decision log that an
+outside-voice pass reversed the primary review's own recommendation, not
+just confirmed it.
+**Revisit:** Yes, deliberately — when §10 Epic E3 (admin payout queue) is
+actually scheduled, build the real per-payout-list + cross-seller-total
+query against that epic's literal ACs, not against this entry's guesswork.
