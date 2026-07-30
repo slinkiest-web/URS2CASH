@@ -13,6 +13,21 @@
  */
 import { z } from "zod";
 import type { CategoryConfig } from "@/lib/categories/registry";
+import { isAllowedImageUrl } from "@/lib/images/allowed-hosts";
+
+/**
+ * §5.3: every photo URL must resolve to a host next/image is actually
+ * configured to serve (src/lib/images/allowed-hosts.ts — the same allowlist
+ * next.config.ts builds remotePatterns from). A listing photo pointing
+ * anywhere else can never be saved through this schema — the only path
+ * createListing/updateListing accept — closing the gap that let a
+ * non-allowlisted host reach a rendered page at all and crash it (found
+ * live, QA session 2026-07-30).
+ */
+const listingPhotoUrlSchema = z
+  .string()
+  .url()
+  .refine(isAllowedImageUrl, "Photo URL must be hosted on an allowed image host.");
 
 export function buildListingSubmissionSchema(category: CategoryConfig) {
   return z
@@ -31,7 +46,7 @@ export function buildListingSubmissionSchema(category: CategoryConfig) {
       condition: z.string(),
       conditionNotes: z.string().trim().optional(),
       photoUrls: z
-        .array(z.string().url())
+        .array(listingPhotoUrlSchema)
         .min(category.minPhotos, `At least ${category.minPhotos} photos are required for ${category.displayName}.`)
         .max(category.maxPhotos, `At most ${category.maxPhotos} photos are allowed.`),
       flawPhotoIndexes: z.array(z.number().int().min(0)).default([]),

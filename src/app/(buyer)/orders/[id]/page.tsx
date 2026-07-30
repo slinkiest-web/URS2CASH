@@ -73,7 +73,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<Para
 
       <div className="grid grid-cols-2 gap-4 rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800 sm:grid-cols-3">
         <div className="flex flex-col">
-          <span className="text-zinc-500 dark:text-zinc-400">Total paid</span>
+          {/* ISSUE-002 (QA 2026-07-30): reads "Total paid" only once the
+              order has actually been paid — otherwise it contradicted the
+              "Awaiting payment" status line right above it. */}
+          <span className="text-zinc-500 dark:text-zinc-400">{order.status === "pending" ? "Total" : "Total paid"}</span>
           <span className="font-medium text-zinc-900 dark:text-zinc-50">{formatKobo(order.amountKobo)}</span>
         </div>
         {isSeller ? (

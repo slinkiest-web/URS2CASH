@@ -4,13 +4,15 @@ import { categoryRegistry } from "@/lib/categories/registry";
 
 const beauty = categoryRegistry.beauty; // minPhotos 3, maxPhotos 8
 
+const PHOTO_HOST = "http://127.0.0.1:54321/storage/v1/object/public/listing-photos";
+
 function validPayload(overrides: Record<string, unknown> = {}) {
   return {
     title: "Barely used lipstick",
     description: "A lovely lipstick, only swatched a couple of times, still mostly full.",
     priceKobo: 150000,
     condition: "brand_new",
-    photoUrls: ["https://example.com/a.jpg", "https://example.com/b.jpg", "https://example.com/c.jpg"],
+    photoUrls: [`${PHOTO_HOST}/a.jpg`, `${PHOTO_HOST}/b.jpg`, `${PHOTO_HOST}/c.jpg`],
     flawPhotoIndexes: [],
     ...overrides,
   };
@@ -28,14 +30,12 @@ describe("buildListingSubmissionSchema (PRD §7.1/§6.3)", () => {
   });
 
   it("rejects fewer photos than the category minimum", () => {
-    const result = schema.safeParse(
-      validPayload({ photoUrls: ["https://example.com/a.jpg", "https://example.com/b.jpg"] })
-    );
+    const result = schema.safeParse(validPayload({ photoUrls: [`${PHOTO_HOST}/a.jpg`, `${PHOTO_HOST}/b.jpg`] }));
     expect(result.success).toBe(false);
   });
 
   it("rejects more than 8 photos", () => {
-    const photoUrls = Array.from({ length: 9 }, (_, i) => `https://example.com/${i}.jpg`);
+    const photoUrls = Array.from({ length: 9 }, (_, i) => `${PHOTO_HOST}/${i}.jpg`);
     expect(schema.safeParse(validPayload({ photoUrls })).success).toBe(false);
   });
 
@@ -80,6 +80,18 @@ describe("buildListingSubmissionSchema (PRD §7.1/§6.3)", () => {
         conditionNotes: "Some light wear on the cap, otherwise in good shape overall.",
         flawPhotoIndexes: [99],
       })
+    );
+    expect(result.success).toBe(false);
+  });
+
+  // Regression: ISSUE-001 — a listing photo host outside next.config.ts's
+  // next/image allowlist crashed the entire home page (next/image throws
+  // synchronously on an unconfigured host, not a recoverable per-image
+  // error). Found by /qa on 2026-07-30.
+  // Report: .gstack/qa-reports/qa-report-full-purchase-journey-2026-07-30.md
+  it("rejects a photo URL on a host outside the next/image allowlist", () => {
+    const result = schema.safeParse(
+      validPayload({ photoUrls: [`${PHOTO_HOST}/a.jpg`, `${PHOTO_HOST}/b.jpg`, "https://example.com/c.jpg"] })
     );
     expect(result.success).toBe(false);
   });

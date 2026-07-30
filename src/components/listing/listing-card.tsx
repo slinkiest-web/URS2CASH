@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { formatKobo } from "@/lib/money";
+import { isAllowedImageUrl } from "@/lib/images/allowed-hosts";
 
 export type ListingCardData = {
   id: string;
@@ -29,15 +30,24 @@ const CONDITION_LABELS: Record<string, string> = {
  * never depends on the image finishing its own load.
  */
 export function ListingCard({ listing }: { listing: ListingCardData }) {
+  // §5.3 / ISSUE-001 (QA 2026-07-30): next/image throws synchronously, not
+  // a recoverable per-image error, when src's host isn't in next.config.ts's
+  // remotePatterns — one bad URL used to 500 the entire page rendering this
+  // card, not just this card. The write path (src/lib/listings/schema.ts)
+  // now rejects a non-allowlisted URL before it can ever be saved, but this
+  // check is what protects pre-existing or externally-written data: it
+  // degrades to the "no photo" empty state instead of crashing.
+  const showPhoto = listing.photoUrl !== null && isAllowedImageUrl(listing.photoUrl);
+
   return (
     <Link
       href={`/l/${listing.id}`}
       className="group flex flex-col overflow-hidden rounded-lg border border-zinc-200 transition-colors hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600"
     >
       <div className="relative aspect-square w-full bg-zinc-100 dark:bg-zinc-900">
-        {listing.photoUrl ? (
+        {showPhoto ? (
           <Image
-            src={listing.photoUrl}
+            src={listing.photoUrl as string}
             alt={listing.title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
