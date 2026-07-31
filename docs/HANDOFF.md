@@ -662,3 +662,39 @@ See `docs/DECISIONS.md` #67–#70 for this prompt's design choices.
 **Next prompt should build:** ratings (§10 Epic D6) — `submitRating`, per this prompt's own context handoff. `src/lib/moderation/contact-detector.ts` already has a documented TODO specifying exactly how to wire review-text scanning once this action exists.
 
 See `docs/DECISIONS.md` #71–#74 for this prompt's design choices.
+
+---
+
+## Prompt 18 — Ratings (Epic D6, every AC)
+
+**Note on process:** the user was asked whether this prompt should go through `/plan-eng-review` like Prompts 16/17 (money-adjacent); declined, since this task touches no payout/order-lifecycle-RPC state and the PRD already dictates the mechanism (UNIQUE constraint + catch, no update/delete, immutable). Implemented directly with the same live-verification rigor.
+
+**Completed:**
+- Migration `supabase/migrations/20260801090000_ratings_action.sql`: adds `orders.rating_reminder_sent_at timestamptz` — the only schema change needed, since `ratings`, its RLS (buyer-insert-on-concluded-order only, Prompt 5), `ratings_public`, and `recompute_seller_rating` (rating_count/average trigger, NULL below 3, Prompt 6) already existed and needed no changes.
+- `src/lib/ratings/submit-rating-schema.ts` + 10 tests: `score` 1-5 integer, `review` optional (empty string normalized to `undefined`), max 500 chars.
+- `src/lib/actions/ratings.ts`: `submitRating({ orderId, score, review }): Result<{ ratingId }>` — buyer-only, `released`/`refunded` only (AC1/AC11), app-level pre-checks for a clear error message backed by the real enforcement layer: `ratings_insert_buyer_on_concluded_order` RLS (the insert goes through the buyer's own session client, not service-role — the opposite posture from every order-lifecycle action, since `ratings`' RLS is the actual gate here, Decision #76). One rating per order via the `order_id` UNIQUE constraint, caught as Postgres `23505`, never a pre-check (AC3/AC12). Review text scanned via the existing `scanForContactDetails`/`flagContactDetection` (Prompt 9) — `moderation_flags.listing_id` resolved via the rated order's own `listing_id` → `listings.category_id` → `categories.slug` (Decision #77, since a rating has no listing_id of its own). Fires `rating_submitted` with `score`/`has_review`/`days_since_released` (computed from `released_at ?? refunded_at`).
+- **A real bug caught by live verification, not inspection** (Decision #75): the first version used `.insert(row).select("id").single()`, matching every other action's pattern — but `ratings` has zero SELECT policy for `authenticated` at all (Decision #24), and Supabase's insert-then-select issues an `INSERT ... RETURNING`, which itself needs a passing SELECT policy on the new row. Confirmed live: the identical insert succeeds without `.select()`, fails with an RLS violation the instant one's added. Fixed by generating the rating's `id` client-side (`crypto.randomUUID()`, same pattern already used in `listing-form.tsx`/`upload-listing-photo.ts`) and inserting without any read-back.
+- `RatingPromptForm` (new client component, `src/components/order/rating-prompt-form.tsx`): score 1-5 buttons + optional review textarea, fires `rating_prompt_shown` on mount. Wired into `src/app/(buyer)/orders/[id]/page.tsx` — renders only when `isBuyer && status IN ('released','refunded') && !hasRating`, never on pending/paid/shipped (AC1), never once already rated (immutable, no edit path). `getOrderDetail` extended with `hasRating` (via `ratings_public`, since the base table can't be self-read) and `refundedAt`.
+- `/api/cron/rating-reminders` (new, same shape as `expire-pending-orders`/`auto-release-orders`): finds `released`/`refunded` orders ≥72 hours old (`RATING_REMINDER_HOURS`, `timing-config.ts`) with no rating and no reminder sent yet, fires `rating_prompt_shown`, stamps `rating_reminder_sent_at` (AC10 — "one reminder... no further reminders"). This was a genuine scope fork flagged before building (not in this prompt's own VERIFICATION list) — see Decision #78.
+- Reviews on listing detail/seller profile (Prompts 11/12) already render non-hidden only via `ratings_public` + `is_hidden = false` (Decision #53) — confirmed, no changes needed.
+- `database.types.ts` regenerated via the real Supabase CLI.
+
+**Verified live, against local Postgres (and a real HTTP request to the dev server for the cron route), before writing this entry:**
+- Rating a `shipped` order as the buyer, simulated via `SET ROLE authenticated` + `request.jwt.claim.sub`: rejected by RLS.
+- Rating a `released` order: succeeds (after the id-generation fix above).
+- A second rating attempt on the same order: fails with Postgres `23505` (unique_violation) on `ratings_order_id_key`, not a pre-check — the actual `INSERT` was attempted, no `SELECT` against `ratings` ran first.
+- Rating a `refunded` order (AC11): succeeds.
+- A review containing a phone number (`"Call 0803 123 4567..."`): the rating publishes, `scanForContactDetails` correctly detects it, and — verified by directly invoking the real `flagContactDetection` module via `tsx` (not a re-implementation) — a `moderation_flags` row is created with the correctly-derived `listing_id`, `source: auto_contact_detect`, `pattern_type: phone`, `matched_text`, and `contact_detail_flagged` fires.
+- No `updateRating`/`deleteRating` exists anywhere (grepped; the only match is this prompt's own comment documenting the absence).
+- The rating-reminders cron, hit via real HTTP with the correct `CRON_SECRET`: finds an eligible unrated order (released 80h ago) and stamps `rating_reminder_sent_at`; a second run finds nothing left to do (`remindersSent: 0`); a separately-seeded eligible-but-already-rated order is correctly excluded and its column stays unstamped; the wrong secret gets a 401.
+- All hand-seeded fixtures (2 `auth.users`/`profiles`, 1 category, 5 listings, 5 orders, 2 ratings, 1 moderation_flags row) cleaned up after verification — confirmed zero leftover rows.
+
+**Also verified:** `npx tsc --noEmit`, scoped `npx eslint "src/**/*.{ts,tsx}"`, `npx vitest run` (157/157 — 147 unchanged + 10 new `submit-rating-schema.test.ts`), `npm run build` all clean.
+
+**Known gaps, flagged rather than silently accepted:**
+- The actual rating-prompt email and its 72-hour reminder email are Prompt 22's scope — this prompt built the real call sites (both events fire correctly, the reminder's "exactly once" invariant is enforced at the data layer) but no email is actually sent yet, same deferral as every other order_* notification.
+- The buyer's orders list page (`/orders`) shows no "needs rating" indicator — only the order-detail page surfaces the prompt, matching how every other buyer/seller action (markShipped, confirmDelivery, releaseOrder) is also detail-page-only, not list-page.
+
+**Next prompt should build:** the admin moderation surface (§10 Epic E) — the `moderation_flags` queue, listing/seller suspension, dispute resolution (`resolveDispute`'s real logic, stubbed in Prompt 17), and `hideReview` (AC8: sets `is_hidden` only, never touches `score`/`rating_average`/`rating_count`). Needs the admin-role mechanism (Known Issue #12) built first — nothing in Epic E has anywhere to check "is this caller actually an admin" yet.
+
+See `docs/DECISIONS.md` #75–#78 for this prompt's design choices.

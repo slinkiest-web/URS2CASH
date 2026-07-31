@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getOrderDetail } from "@/lib/orders/get-order-detail";
 import { MarkShippedForm } from "@/components/order/mark-shipped-form";
 import { OrderActionButton } from "@/components/order/order-action-button";
+import { RatingPromptForm } from "@/components/order/rating-prompt-form";
 import { formatKobo } from "@/lib/money";
 
 type Params = { id: string };
@@ -134,6 +135,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<Para
       {isSeller && order.status === "paid" ? <MarkShippedForm orderId={order.id} /> : null}
       {isBuyer && order.status === "shipped" ? <OrderActionButton orderId={order.id} action="confirmDelivery" /> : null}
       {isBuyer && order.status === "delivered" ? <OrderActionButton orderId={order.id} action="releaseOrder" /> : null}
+      {/* §10 Epic D6 AC1: only on a concluded order (released/refunded),
+          never on pending/paid/shipped, and never once already rated
+          (ratings are immutable — no edit path exists). */}
+      {isBuyer && (order.status === "released" || order.status === "refunded") && !order.hasRating ? (
+        <RatingPromptForm orderId={order.id} />
+      ) : null}
 
       <div>
         <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Order history</h2>

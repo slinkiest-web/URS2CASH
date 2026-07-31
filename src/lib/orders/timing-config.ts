@@ -38,3 +38,6 @@ export const DELIVERED_AUTO_RELEASE_HOURS = 72;
  * hardcoded in SQL.
  */
 export const DISPUTE_WINDOW_DAYS = 7;
+
+/** §10 Epic D6 AC10: "one reminder at 72 hours if unrated." */
+export const RATING_REMINDER_HOURS = 72;

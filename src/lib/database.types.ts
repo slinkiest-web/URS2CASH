@@ -377,6 +377,7 @@ export type Database = {
           listing_id: string
           paid_at: string | null
           paystack_reference: string | null
+          rating_reminder_sent_at: string | null
           refunded_at: string | null
           released_at: string | null
           seller_id: string
@@ -401,6 +402,7 @@ export type Database = {
           listing_id: string
           paid_at?: string | null
           paystack_reference?: string | null
+          rating_reminder_sent_at?: string | null
           refunded_at?: string | null
           released_at?: string | null
           seller_id: string
@@ -425,6 +427,7 @@ export type Database = {
           listing_id?: string
           paid_at?: string | null
           paystack_reference?: string | null
+          rating_reminder_sent_at?: string | null
           refunded_at?: string | null
           released_at?: string | null
           seller_id?: string
@@ -1019,6 +1022,7 @@ export type Database = {
           listing_id: string
           paid_at: string | null
           paystack_reference: string | null
+          rating_reminder_sent_at: string | null
           refunded_at: string | null
           released_at: string | null
           seller_id: string
@@ -1052,6 +1056,7 @@ export type Database = {
           listing_id: string
           paid_at: string | null
           paystack_reference: string | null
+          rating_reminder_sent_at: string | null
           refunded_at: string | null
           released_at: string | null
           seller_id: string
@@ -1085,6 +1090,7 @@ export type Database = {
           listing_id: string
           paid_at: string | null
           paystack_reference: string | null
+          rating_reminder_sent_at: string | null
           refunded_at: string | null
           released_at: string | null
           seller_id: string
@@ -1119,6 +1125,7 @@ export type Database = {
           listing_id: string
           paid_at: string | null
           paystack_reference: string | null
+          rating_reminder_sent_at: string | null
           refunded_at: string | null
           released_at: string | null
           seller_id: string
@@ -1157,6 +1164,7 @@ export type Database = {
           listing_id: string
           paid_at: string | null
           paystack_reference: string | null
+          rating_reminder_sent_at: string | null
           refunded_at: string | null
           released_at: string | null
           seller_id: string
@@ -1219,6 +1227,7 @@ export type Database = {
           listing_id: string
           paid_at: string | null
           paystack_reference: string | null
+          rating_reminder_sent_at: string | null
           refunded_at: string | null
           released_at: string | null
           seller_id: string

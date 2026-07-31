@@ -25,6 +25,7 @@ export type OrderDetail = {
   shippedAt: string | null;
   deliveredAt: string | null;
   releasedAt: string | null;
+  refundedAt: string | null;
   autoReleaseAt: string | null;
   createdAt: string;
   buyerId: string;
@@ -32,6 +33,12 @@ export type OrderDetail = {
   listingId: string;
   listingTitle: string;
   transitions: OrderTransition[];
+  /** §10 Epic D6 AC1: whether the buyer has already rated this order — the
+   * rating prompt must never re-render once a rating exists (ratings are
+   * immutable, there is no edit path). Checked via `ratings_public`, since
+   * the base `ratings` table has no SELECT policy at all for authenticated
+   * (Decision #24) — this is a plain existence check, not a display read. */
+  hasRating: boolean;
 };
 
 /**
@@ -54,20 +61,21 @@ export const getOrderDetail = cache(async (orderId: string): Promise<OrderDetail
   const { data: order } = await supabase
     .from("orders_participant_view")
     .select(
-      "id, status, amount_kobo, commission_kobo, seller_payout_kobo, delivery_name, delivery_phone, delivery_address, delivery_state, tracking_note, paid_at, shipped_at, delivered_at, released_at, auto_release_at, created_at, buyer_id, seller_id, listing_id"
+      "id, status, amount_kobo, commission_kobo, seller_payout_kobo, delivery_name, delivery_phone, delivery_address, delivery_state, tracking_note, paid_at, shipped_at, delivered_at, released_at, refunded_at, auto_release_at, created_at, buyer_id, seller_id, listing_id"
     )
     .eq("id", orderId)
     .maybeSingle();
 
   if (!order || !order.id || !order.status || !order.buyer_id || !order.seller_id || !order.listing_id) return null;
 
-  const [{ data: listing }, { data: transitions }] = await Promise.all([
+  const [{ data: listing }, { data: transitions }, { data: rating }] = await Promise.all([
     supabase.from("listings").select("title").eq("id", order.listing_id).maybeSingle(),
     supabase
       .from("order_status_transitions")
       .select("id, from_status, to_status, actor_role, created_at, note")
       .eq("order_id", orderId)
       .order("created_at", { ascending: true }),
+    supabase.from("ratings_public").select("id").eq("order_id", orderId).maybeSingle(),
   ]);
 
   return {
@@ -85,6 +93,7 @@ export const getOrderDetail = cache(async (orderId: string): Promise<OrderDetail
     shippedAt: order.shipped_at,
     deliveredAt: order.delivered_at,
     releasedAt: order.released_at,
+    refundedAt: order.refunded_at,
     autoReleaseAt: order.auto_release_at,
     createdAt: order.created_at ?? new Date(0).toISOString(),
     buyerId: order.buyer_id,
@@ -104,5 +113,6 @@ export const getOrderDetail = cache(async (orderId: string): Promise<OrderDetail
         createdAt: t.created_at,
         note: t.note,
       })),
+    hasRating: rating !== null && rating !== undefined,
   };
 });

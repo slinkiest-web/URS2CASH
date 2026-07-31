@@ -1377,3 +1377,96 @@ call it; `npx vitest run` (147/147, unchanged) and live re-verification of
 `markShipped`/`confirmDelivery`/`releaseOrder` confirm zero behavior
 change.
 **Revisit:** No.
+
+---
+
+## From Prompt 18
+
+### 75. `ratings` insert never uses `.select().single()` after the write — the id is client-generated instead
+**Why:** a real bug found by live verification, not by inspection. `ratings`
+deliberately has **no SELECT policy at all** for `authenticated`, not even
+self-read of one's own row (Decision #24 — "no update, no delete, for any
+role... not even the rater"; public reads go through `ratings_public`
+only). Supabase's `.insert(row).select("id").single()` pattern issues a
+single `INSERT ... RETURNING id`, and returning the new row requires a
+*passing SELECT policy* on it, in addition to the INSERT policy's `WITH
+CHECK` — with zero SELECT policy on the base table, that read-back fails
+RLS even for a fully valid insert by the correct buyer. Confirmed live,
+precisely: the identical `INSERT` statement succeeds when run without a
+trailing `RETURNING`/`.select()`, and fails with "new row violates
+row-level security policy for table ratings" the instant one is added —
+same role, same session, same row. `createListing`'s own
+`.insert().select("id").single()` (Prompt 7) works fine by contrast,
+because `listings` *does* have an owner-read SELECT policy
+(`listings_select_own`) — `ratings` is the first table in this schema
+inserted via the user's own session client that has zero self-read at all,
+which is exactly why this bug had never been hit before. Fixed:
+`submitRating` generates the rating's `id` with `crypto.randomUUID()`
+before inserting (same pattern already used for client-generated ids
+elsewhere in this codebase — `listing-form.tsx`, `upload-listing-photo.ts`)
+and inserts without any `.select()` at all, so no RLS-gated read-back is
+ever required.
+**Revisit:** No — this is the correct, permanent shape. Any future action
+that inserts into `ratings` (or any other table with zero SELECT policy
+for the writing role) must follow the same pattern, not
+`.insert().select()`.
+
+### 76. `submitRating`'s insert goes through the buyer's own session client, not the service-role client — the opposite posture from every order-lifecycle action
+**Why:** PRD §7.2 frames `ratings_insert_buyer_on_concluded_order` (Prompt
+5's RLS policy) as "the actual enforcement layer, not a convenience" —
+unlike `orders`, which has zero authenticated write policies (forcing
+every order-lifecycle action through the service-role client, Decision
+from Prompt 13's checkout), `ratings` is designed so RLS itself is the
+real gate for AC1 (buyer-only, concluded-order-only) and, combined with
+the `order_id` UNIQUE constraint, AC3/AC12 (one rating per order, race
+caught at the constraint, never a pre-check). `submitRating`'s app-level
+checks (buyer match, status check) exist for a clearer error message only,
+mirroring the same "defense in depth, not the real gate" posture this
+codebase already uses elsewhere (e.g. Decision #56). The service-role
+client is used only for the secondary, unrelated lookup needed to resolve
+`moderation_flags.listing_id`/`categorySlug` when a review is flagged
+(§9.3) — `moderation_flags` itself has zero RLS policies for
+`authenticated` ("Admin only"), so that specific write always needs
+service role regardless.
+**Revisit:** No.
+
+### 77. A rating's contact-detail flag resolves `moderation_flags.listing_id` via the order being rated, not a new column on `ratings`
+**Why:** `moderation_flags.listing_id` is `NOT NULL` (Prompt 5), but
+`ratings` has no `listing_id` of its own (only `order_id`/`rater_id`/
+`seller_id`) — a rating's review text has no listing to attach a flag to
+except by way of the order it concerns. `submitRating` derives it via
+`orders.listing_id` (already fetched for the buyer/status check) →
+`listings.category_id` → `categories.slug` (two sequential queries via the
+service-role client, matching this codebase's general preference for
+explicit queries over a single deep nested-select — no precedent for that
+pattern exists elsewhere in this codebase to build on). `categorySlug` is
+only used for the `contact_detail_flagged` event's `category_id` property
+(itself always the registry slug, not the DB UUID, consistent with every
+other call site of this event). Verified live end-to-end against the real
+production code (not a re-implementation): a review containing a phone
+number correctly resolved the listing's category slug and produced a
+`moderation_flags` row with the right `listing_id`/`pattern_type`/
+`matched_text`.
+**Revisit:** No.
+
+### 78. The 72-hour rating reminder is a real cron route + a new `orders.rating_reminder_sent_at` column, not deferred alongside the email itself
+**Why:** §10 Epic D6 AC10 ("one reminder at 72 hours if unrated, no
+further reminders") isn't in this prompt's own VERIFICATION list, and the
+actual email send is Prompt 22's scope, same as every other order_*
+notification so far — but enforcing "exactly one reminder, ever" needs
+some persisted marker to check against, and none existed. Flagged before
+building (a real scope fork, not a trivial one): build the full mechanism
+now, or only fire `rating_prompt_shown` on page view and skip the reminder
+entirely this prompt. You chose to build it now. New migration
+(`20260801090000_ratings_action.sql`) adds `orders.rating_reminder_sent_at
+timestamptz`; new cron route `/api/cron/rating-reminders` (same shape as
+`expire-pending-orders`/`auto-release-orders`) finds `released`/`refunded`
+orders ≥`RATING_REMINDER_HOURS` (72, `timing-config.ts`) old with no
+rating and no reminder sent yet, fires `rating_prompt_shown` (the same
+event as the on-page prompt — PRD §3.5 names no separate "reminder" event)
+and stamps the column so it can never fire twice. Verified live via a real
+HTTP request against the dev server (not just direct SQL): an eligible
+unrated order gets exactly one reminder and the column stamped; a second
+run finds nothing left to do; a separately-seeded eligible-but-already-
+rated order is correctly excluded and never stamped.
+**Revisit:** No.
