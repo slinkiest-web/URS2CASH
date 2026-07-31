@@ -629,6 +629,8 @@ Committed as `8c71e9c`, pushed to `origin/main`.
 
 See `docs/DECISIONS.md` #67–#70 for this prompt's design choices.
 
+Committed as `7ab67bb`, pushed to `origin/main`.
+
 ---
 
 ## Prompt 17 — Dispute flow (Epic D5 AC1-AC7)
@@ -662,6 +664,8 @@ See `docs/DECISIONS.md` #67–#70 for this prompt's design choices.
 **Next prompt should build:** ratings (§10 Epic D6) — `submitRating`, per this prompt's own context handoff. `src/lib/moderation/contact-detector.ts` already has a documented TODO specifying exactly how to wire review-text scanning once this action exists.
 
 See `docs/DECISIONS.md` #71–#74 for this prompt's design choices.
+
+Committed as `d62ecbd`, pushed to `origin/main`.
 
 ---
 
@@ -698,3 +702,5 @@ See `docs/DECISIONS.md` #71–#74 for this prompt's design choices.
 **Next prompt should build:** the admin moderation surface (§10 Epic E) — the `moderation_flags` queue, listing/seller suspension, dispute resolution (`resolveDispute`'s real logic, stubbed in Prompt 17), and `hideReview` (AC8: sets `is_hidden` only, never touches `score`/`rating_average`/`rating_count`). Needs the admin-role mechanism (Known Issue #12) built first — nothing in Epic E has anywhere to check "is this caller actually an admin" yet.
 
 See `docs/DECISIONS.md` #75–#78 for this prompt's design choices.
+
+Committed as `fe65ba4`, pushed to `origin/main`. `docs/PROJECT_STATUS.md` reflects the full state as of this prompt — read it first in a fresh session before starting Prompt 19.
