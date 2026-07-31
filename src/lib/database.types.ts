@@ -592,14 +592,14 @@ export type Database = {
           {
             foreignKeyName: "payouts_order_id_fkey"
             columns: ["order_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "payouts_order_id_fkey"
             columns: ["order_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "orders_participant_view"
             referencedColumns: ["id"]
           },
@@ -1257,6 +1257,52 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      mark_payout_failed: {
+        Args: { p_note: string; p_payout_id: string }
+        Returns: {
+          admin_reference: string | null
+          amount_kobo: number
+          created_at: string
+          failure_note: string | null
+          id: string
+          is_blocked: boolean
+          order_id: string
+          paid_at: string | null
+          paid_by: string | null
+          payout_account_id: string | null
+          seller_id: string
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "payouts"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      mark_payout_paid: {
+        Args: { p_admin_id: string; p_payout_id: string; p_reference: string }
+        Returns: {
+          admin_reference: string | null
+          amount_kobo: number
+          created_at: string
+          failure_note: string | null
+          id: string
+          is_blocked: boolean
+          order_id: string
+          paid_at: string | null
+          paid_by: string | null
+          payout_account_id: string | null
+          seller_id: string
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "payouts"
           isOneToOne: false
           isSetofReturn: true
         }

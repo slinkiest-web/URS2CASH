@@ -872,3 +872,114 @@ unchanged). Category control (§10 Epic E4) is the only other remaining Epic
 E surface with zero code.
 
 See `docs/DECISIONS.md` #79–#88 for this prompt's design choices.
+
+---
+
+## Prompt 20 — Admin payout queue (Epic E3)
+
+**Note on citation drift, resolved before writing code (same posture as
+Decisions #21/#26/#35/#54/#83/#84 before this):** the task brief said
+`markPayoutPaid` "sets completed" and transitions the constituent orders
+to a `paid_out` status, and that the action "emits `payout_completed`."
+None of the three exist anywhere in the PRD — `payouts.status`'s real enum
+is `queued`/`held`/`paid`/`failed` (§10 Epic E3 AC3 literally says "Sets
+`paid`, `paid_at`, `paid_by`"), §8.1's order state machine is a closed
+9-value set with no `paid_out` and no transition after `released` at all,
+and §3.5's event table has `payout_marked_paid` (already scaffolded since
+Prompt 19), not `payout_completed`. Built against the real PRD text — see
+Decisions #89/#90.
+
+**Completed:**
+- Migration `supabase/migrations/20260802090000_payout_queue.sql`:
+  - Replaces `payouts.order_id`'s blanket `UNIQUE` with
+    `payouts_order_id_active_unique`, a partial unique index excluding
+    `status = 'failed'` — the DB-level enforcement of this prompt's HARD
+    RULE #4 ("a single order can never appear in two non-failed payouts").
+    The rule's own "non-failed" phrasing is the textual signal that failed
+    attempts are meant to persist as their own rows rather than being
+    reused (Decision #91) — same shape as `orders_listing_id_active_unique`
+    (Decision #54).
+  - `mark_payout_paid(payout_id, admin_id, reference)` — atomic,
+    `WHERE status = 'queued' AND is_blocked = false` (AC2's "not
+    actionable" enforced at the DB level too, not just the UI's disabled
+    state).
+  - `mark_payout_failed(payout_id, note)` — sets the failing row to
+    `status='failed'` permanently (kept as history, `failure_note` intact)
+    and, in the same transaction, inserts a fresh `queued` row for the same
+    order, re-resolving `payout_account_id`/`is_blocked` from scratch
+    (Decision #92) — not a blind copy of the failed row's stale values.
+    No `admin_id` parameter: `payouts` has no "who marked this failed"
+    column (only `paid_by`), so the actor is logged at the TypeScript layer
+    only, same posture as `hideReview`'s reason (Decision #87).
+  - Both functions: `EXECUTE` revoked from `public`/`anon`/`authenticated`,
+    granted only to `service_role`, same shape as every prior admin RPC.
+- `src/lib/admin/get-payouts.ts`: `getPayoutQueue()` — scoped to
+  `status = 'queued'` only (AC1's literal word; `held`/"processing" are
+  both out of scope, Decision #93), grouped by seller with a masked bank
+  account (`Bank Name ••••1234`, one per seller group — Decision #94),
+  per-seller and grand (`totalOutstandingKobo`, AC7) totals, and
+  `daysSinceReleased` computed from each constituent order's `released_at`.
+- `src/lib/admin/admin-schemas.ts`: `markPayoutPaidInputSchema`
+  (`reference`, min 3 chars — AC3's "requires `admin_reference`"),
+  `markPayoutFailedInputSchema` (`note`, min 5 chars — AC4's "requires
+  `failure_note`").
+- `src/lib/actions/admin.ts`: `markPayoutPaid`/`markPayoutFailed` — both
+  call `requireAdmin()` first, unconditionally, same as every existing
+  admin action. `markPayoutPaid` fires `payout_marked_paid` with
+  `hours_since_released` computed from the order's `released_at` (not the
+  payout row's own `created_at`); no order-side write happens anywhere in
+  either action (Decision #89 — payout completion is a `payouts`-table-only
+  event). AC6 (seller emailed on paid) is a call site only, same
+  Prompt-22 deferral as every prior notification in this codebase.
+- `src/app/admin/payouts/page.tsx` + `MarkPayoutPaidForm`/
+  `MarkPayoutFailedForm` (new client components, same
+  useTransition/router.refresh() shape as every prior admin action form):
+  seller groups, masked account, per-row amount/days-since-release/blocked
+  badge, mark-paid (disabled with a "Blocked" label when `is_blocked`) and
+  mark-failed actions. Nav link added to `src/app/admin/layout.tsx`; a
+  "Payouts outstanding" tile added to `/admin`'s landing page alongside the
+  existing open-flags/open-disputes tiles.
+
+**Verified live, against local Postgres, via a 21-check `tsx` script (not
+just typecheck/lint) before writing this entry:**
+- Grouping/totals: two queued payouts for seller A and one (blocked) for
+  seller B group correctly, seller A's subtotal and the grand
+  `totalOutstandingKobo` both sum exactly right, seller B's payout is
+  correctly flagged `is_blocked`.
+- **The DB-enforced double-payout guard (HARD RULE #4), the core thing
+  this prompt had to get right:** inserting a second `queued` payout for
+  an order that already has one is rejected with Postgres `23505`; after
+  `mark_payout_failed` moves the original to `failed`, a fresh `queued`
+  row for the *same* order inserts successfully (the retry); a third
+  non-failed row for that same order is rejected again — exactly "at most
+  one non-failed row per order, at any time."
+- `mark_payout_paid`: succeeds on a queued/unblocked payout, sets
+  `status`/`paid_at`/`paid_by`/`admin_reference` correctly; the
+  constituent order's `status` is confirmed **unchanged** (still
+  `released`) immediately after — direct confirmation that Decision #89's
+  "no order-side effect" reading is what actually happens, not just what
+  was intended. Re-marking an already-paid payout is a no-op (empty RPC
+  result). Attempting to mark a **blocked** payout paid is rejected (empty
+  RPC result) — AC2's "not actionable" enforced at the DB level.
+- `mark_payout_failed`: the original row ends at `status='failed'` with
+  `failure_note` set; exactly 2 rows now exist for that order (the failed
+  original + a fresh `queued` retry); the retry row correctly re-resolved
+  seller A's verified account and carries the right amount.
+
+**Also verified:** `npx tsc --noEmit`, scoped `npx eslint "src/**/*.{ts,tsx}" "scripts/**/*.ts"`, `npx vitest run` (157/157, unchanged — this prompt added no new pure-function modules), `npm run build` all clean (`/admin/payouts` registered). All test fixtures (4 `auth.users`/`profiles`, 1 payout account, 3 listings, 3 orders, 3+ payout rows) cleaned up via a final `supabase db reset`.
+
+**Known gaps, flagged rather than silently accepted:**
+- `payout_accounts.profile_id` has no uniqueness constraint (pre-existing,
+  `docs/TODOS.md` #1) — now has a sharper consequence for retries
+  specifically. Known Issue #38.
+- No admin order-detail page exists to link a payout row's `order_id` to;
+  shown as plain text. Not asked for by this prompt's ACs. Known Issue #39.
+
+**Next prompt should build:** Epic E4 (category control) — `setCategoryFlags`,
+the `listable`/`browsable` toggle UI, per-category live published-listing
+count/distinct-seller-count/listing-to-sale-conversion (AC2), and the
+success-metrics view (second-listing-rate, the project's primary metric,
+per §3.1/§3.4). `setCategoryFlags` should reuse `requireAdmin()` unchanged,
+same as every action Prompts 19/20 already built.
+
+See `docs/DECISIONS.md` #89–#94 for this prompt's design choices.

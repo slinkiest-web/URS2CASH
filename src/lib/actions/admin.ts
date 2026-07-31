@@ -8,7 +8,10 @@ import {
   dismissFlagInputSchema,
   setListingLimitOverrideInputSchema,
   hideReviewInputSchema,
+  markPayoutPaidInputSchema,
+  markPayoutFailedInputSchema,
 } from "@/lib/admin/admin-schemas";
+import { track } from "@/lib/analytics/events";
 import { ok, err, type Result } from "@/lib/result";
 
 /**
@@ -203,6 +206,99 @@ export async function dismissFlag(flagId: string): Promise<Result<void>> {
   if (error || !updated) {
     return err("not_found", "Flag not found or already reviewed.");
   }
+
+  return ok(undefined);
+}
+
+/**
+ * PRD §11.2: markPayoutPaid(payoutId, reference): Result<void>. §10 Epic E3
+ * AC3/AC5.
+ *
+ * `mark_payout_paid()` (Prompt 20's migration) is the actual guard —
+ * `status='queued' AND is_blocked=false` — so an already-paid/-failed
+ * payout, or a blocked one, can't be marked paid even if the UI's own
+ * disabled state were bypassed. Fires `payout_marked_paid` with
+ * `hours_since_released`, computed from the constituent order's
+ * `released_at` (not the payout row's own `created_at`, which is normally
+ * the same instant but shouldn't be assumed to always be).
+ *
+ * No order-side write happens here at all — §8.1's state machine has no
+ * transition after `released` tied to payout completion; payout status is
+ * tracked entirely on `payouts`, never mirrored onto `orders` (see
+ * docs/DECISIONS.md for the citation-drift note this resolves).
+ *
+ * AC6 (seller emailed on paid) is a call site only, same Prompt-22
+ * deferral as every other notification in this codebase.
+ */
+export async function markPayoutPaid(payoutId: string, reference: string): Promise<Result<void>> {
+  const admin = await requireAdmin();
+  if (!admin.ok) {
+    return err(admin.error.code, admin.error.message);
+  }
+
+  const parsed = markPayoutPaidInputSchema.safeParse({ payoutId, reference });
+  if (!parsed.success) {
+    return err("invalid_input", parsed.error.issues[0]?.message ?? "Enter a bank reference.");
+  }
+
+  const service = createServiceClient();
+  const { data: transitioned, error } = await service.rpc("mark_payout_paid", {
+    p_payout_id: parsed.data.payoutId,
+    p_admin_id: admin.data.adminId,
+    p_reference: parsed.data.reference,
+  });
+
+  const payout = transitioned?.[0];
+  if (error || !payout) {
+    return err("invalid_transition", "This payout isn't ready to be marked paid — it may already be paid, failed, or blocked.");
+  }
+
+  const { data: order } = await service.from("orders").select("released_at").eq("id", payout.order_id).maybeSingle();
+  const hoursSinceReleased = order?.released_at
+    ? Math.round((Date.now() - new Date(order.released_at).getTime()) / 3_600_000)
+    : 0;
+
+  track("payout_marked_paid", { payout_id: payout.id, hours_since_released: hoursSinceReleased });
+
+  return ok(undefined);
+}
+
+/**
+ * PRD §11.2: markPayoutFailed(payoutId, note): Result<void>. §10 Epic E3
+ * AC4: "requires failure_note and returns the payout to queued on retry."
+ *
+ * `mark_payout_failed()` keeps the failing row permanently at
+ * `status='failed'` (the historical record, `failure_note` intact — never
+ * mutated back to `queued` in place) and inserts a fresh `queued` retry row
+ * for the same order in the same transaction, re-resolving the seller's
+ * payout account from scratch. See docs/DECISIONS.md for the full reasoning
+ * — the HARD RULE's own "non-failed" phrasing is what rules out the
+ * simpler "flip this row back to queued" reading.
+ */
+export async function markPayoutFailed(payoutId: string, note: string): Promise<Result<void>> {
+  const admin = await requireAdmin();
+  if (!admin.ok) {
+    return err(admin.error.code, admin.error.message);
+  }
+
+  const parsed = markPayoutFailedInputSchema.safeParse({ payoutId, note });
+  if (!parsed.success) {
+    return err("invalid_input", parsed.error.issues[0]?.message ?? "Enter a failure note.");
+  }
+
+  const service = createServiceClient();
+  const { data: transitioned, error } = await service.rpc("mark_payout_failed", {
+    p_payout_id: parsed.data.payoutId,
+    p_note: parsed.data.note,
+  });
+
+  if (error || !transitioned || transitioned.length === 0) {
+    return err("invalid_transition", "This payout isn't ready to be marked failed.");
+  }
+
+  // No admin-actor column exists for this on `payouts` (only `paid_by`) —
+  // logged for audit purposes only, same posture as hideReview's reason.
+  console.log("[markPayoutFailed]", { payoutId: parsed.data.payoutId, adminId: admin.data.adminId, note: parsed.data.note });
 
   return ok(undefined);
 }

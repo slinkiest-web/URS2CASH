@@ -1691,3 +1691,121 @@ unauthenticated request to `/admin` and `/admin/moderation` both return
 `307`s to `/sign-in` — the deliberately different failure mode the AC
 calls for.
 **Revisit:** No.
+
+---
+
+## From Prompt 20
+
+### 89. Payout completion has no order-side effect at all — no `paid_out` status, `payouts.status` becomes `paid` (not `completed`)
+**Why:** this prompt's own task brief said `markPayoutPaid` "sets completed"
+and "transitions the constituent orders to `paid_out`." Grepped §7.1's
+`payouts` table (`status text NOT NULL DEFAULT 'queued'` — the original
+migration's own CHECK constraint lists exactly `queued`/`paid`/`failed`,
+`held` added in Prompt 19) and §8.1's order state machine (a closed,
+exhaustively-diagrammed 9-value set: `pending`/`paid`/`shipped`/
+`delivered`/`released`/`disputed`/`refunded`/`cancelled`/`expired`) — zero
+hits for `completed` or `paid_out` anywhere in either. §10 Epic E3 AC3 is
+also explicit and literal: "Sets `paid`, `paid_at`, `paid_by`." Resolved in
+favor of the PRD text, same posture as Decisions #21/#26/#35/#54/#83/#84:
+`mark_payout_paid()` only ever writes to the `payouts` row; nothing in this
+prompt touches `orders.status`. An order that reaches `released` stays
+`released` forever after — §8.1's own table already says as much
+("`released`: Funds owed to seller, payout row created | System" — the
+terminal successful state for the order itself; the payout's *own*
+lifecycle, tracked entirely on a separate table, is what completes
+afterward). Live-verified: a payout's constituent order's `status` is
+observed unchanged (`released`) immediately after `mark_payout_paid`
+succeeds.
+**Revisit:** No, unless a future PRD revision explicitly adds a `paid_out`
+(or similarly named) order status with its own ACs — at which point this
+decision should be re-read against that new text, not silently reverted to
+match a task brief's paraphrase.
+
+### 90. `payout_marked_paid` fires, not `payout_completed`
+**Why:** same citation-drift shape as Decision #83 — grepped §3.5's full
+event table, zero hits for `payout_completed`; `payout_marked_paid` already
+exists there ("Admin marks payout paid" · `payout_id`, `hours_since_released`)
+and was already scaffolded in `src/lib/analytics/events.ts` since Prompt 19
+in anticipation of exactly this prompt. `hours_since_released` is computed
+from the constituent *order's* `released_at`, not the payout row's own
+`created_at` — normally the same instant (payout rows are created
+atomically with the `released` transition) but not guaranteed to be, and
+the PRD's own property name says "released," not "payout created."
+**Revisit:** No.
+
+### 91. The double-payout guard is a partial unique index excluding `failed` rows, not a blanket `UNIQUE` — the HARD RULE's own "non-failed" wording is the textual signal
+**Why:** this prompt's HARD RULE #4 reads "a single order can NEVER appear
+in two **non-failed** payouts" (emphasis in the original task text) — an
+explicit carve-out that would be entirely redundant under a blanket
+`UNIQUE` on `order_id` (which already guarantees "never in two payouts,
+full stop," failed or not, with no need to say "non-failed" at all). The
+only way that phrasing makes sense is if a failed attempt is expected to
+remain its own permanent row rather than being reused or deleted, and a
+retry inserts a genuinely new row for the same order. This is the exact
+same shape Decision #54 already established for `orders.listing_id`
+(`orders_listing_id_active_unique`, scoped to exclude `cancelled`/
+`expired`) — `payouts_order_id_active_unique` here excludes `failed` the
+same way. Live-verified: a second `queued` insert for an order that
+already has one is rejected (Postgres `23505`); after `mark_payout_failed`
+moves the original row to `failed`, a fresh `queued` row for the *same*
+order inserts successfully; a third non-failed row for that same order is
+then rejected again — exactly "at most one non-failed row per order, at
+any time," which is what the HARD RULE actually asks for.
+**Revisit:** No — this is the resolved reading, not a judgment call left
+open.
+
+### 92. `mark_payout_failed()` creates a fresh retry row rather than flipping the failing row back to `queued` in place
+**Why:** follows directly from Decision #91 — if failed rows are meant to
+persist as permanent historical records (the reason the unique index
+excludes them), then "returns the payout to `queued` on retry" (§10 Epic E3
+AC4) must mean a *new* row, not mutating the old one's status back and
+forth. The failing row keeps `status='failed'` and its `failure_note`
+forever, an honest audit trail of what went wrong and when; the retry row
+re-resolves `payout_account_id`/`is_blocked` from scratch (the exact same
+"most recently created verified `payout_accounts` row" lookup
+`release_order()`/`resolve_dispute_release()` already use), rather than
+copying the failed row's stale values forward — the whole point of a retry
+is that the seller may have fixed the account problem that caused the
+failure in the first place. This is not "admin creating a payout," which
+§11.2 HARD RULE #5 forbids (`docs/HANDOFF.md`'s own framing: "Admin does
+NOT create payouts... admin only marks them paid or failed") — the admin
+never chooses which order gets a fresh attempt or invents one from
+nothing; the row is a mechanical, structural consequence of marking one
+failed, for an order that already, permanently, has exactly one payout
+lineage (`release_order`/`resolve_dispute_release` remain the only places
+a payout is ever created for a brand-new order). Live-verified: after
+`mark_payout_failed`, exactly 2 rows exist for that order (the failed
+original + a fresh `queued` retry carrying the correct amount and a
+freshly re-resolved account).
+**Revisit:** No.
+
+### 93. The payout queue is scoped to `status = 'queued'` only — `held` and the brief's "processing" are both out of scope
+**Why:** §10 Epic E3 AC1 says literally "Lists `queued` payouts." The
+task brief's own "(and processing)" doesn't correspond to any real status —
+`payouts.status`'s only values are `queued`/`held`/`paid`/`failed`, and
+`held` is a distinct, dispute-frozen concept (§10 Epic D5 AC3, Prompt 19)
+that this AC never mentions. Scoping the query to `queued` only (not
+`status != 'paid' AND status != 'failed'`, which would silently also
+surface `held` rows an admin cannot act on and this AC never asked to
+show) keeps the queue's contents exactly matching its own literal spec.
+**Revisit:** If a future prompt's brief explicitly wants disputed/frozen
+payouts visible somewhere in `/admin` (a reasonable ask, just not this
+one), that's a deliberate scope addition with its own AC to build against,
+not a fix to this decision.
+
+### 94. Masked account details are shown once per seller group, not once per constituent payout row
+**Why:** §10 Epic E3 AC1 asks for "seller, masked account details, amount,
+and days since release" in a list of payouts; this prompt's own brief adds
+grouping by seller on top. A seller's queued payouts all resolve to the
+same verified `payout_accounts` row in the overwhelmingly common case (one
+verified account per seller in practice, even though no DB uniqueness
+enforces that — `docs/TODOS.md` #1), so repeating the identical masked
+account string on every line item under an already-labelled seller group
+would be pure noise. `getPayoutQueue()` keeps the first non-null masked
+account it finds per seller group; each row still carries its own
+`amountKobo`/`daysSinceReleased`/`isBlocked`/`orderId` independently, so
+nothing AC1 asks for per-payout is actually lost.
+**Revisit:** No, unless a future prompt surfaces a case where a single
+seller's queued payouts legitimately resolve to *different* accounts (e.g.
+she changed banks mid-queue) — worth showing per-row at that point, not
+before.

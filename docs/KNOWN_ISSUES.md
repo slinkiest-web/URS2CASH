@@ -435,3 +435,29 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     that could silently diverge. Close by running `/qa` or `/browse` once
     the tooling is available, or the first time a real non-admin account
     exists to test with by hand.
+
+---
+
+## From Prompt 20
+
+38. **No `payout_accounts.profile_id` uniqueness constraint (already tracked in `docs/TODOS.md` #1) now has a second, sharper consequence: a seller with more than one verified account has no deterministic way to know which one a queued payout — or a retry — will actually pay out to.**
+    `mark_payout_failed()`'s retry-row resolution uses the identical
+    `ORDER BY created_at DESC, id DESC LIMIT 1` tiebreaker
+    `release_order()`/`resolve_dispute_release()` already established
+    (Decision #92) — deterministic, but not admin-visible anywhere in
+    `/admin/payouts` (the queue shows one masked account per seller group,
+    Decision #94, which would silently pick the same "most recent" account
+    without surfacing that a choice was made).
+    **Status:** open, low priority — same root cause as `docs/TODOS.md` #1,
+    not a new gap this prompt introduced. Worth closing together.
+
+39. **The admin payout queue has no link from a payout row to that order's own admin-visible detail (no `/admin/orders/[id]` exists).**
+    `/admin/payouts` shows the raw `order_id` as plain text per row — there
+    is no admin order-detail page anywhere in this codebase to link it to
+    (the dispute-detail page, `/admin/disputes/[id]`, is the closest thing,
+    but it's scoped to disputed orders specifically, not general order
+    lookup). Not asked for by this prompt's brief or by §10 Epic E3's ACs,
+    which only require the order id, amount, and days-since-release be
+    shown — not a full order view.
+    **Status:** open, cosmetic — revisit if a future prompt's brief asks
+    for a general admin order-lookup surface.

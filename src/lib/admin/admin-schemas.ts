@@ -53,6 +53,26 @@ export const hideReviewInputSchema = z.object({
  * (unlike disputes.detail's 20-1000) — 10 chars is a reasonable floor
  * against a one-word non-answer, not a literal PRD number.
  */
+/** §10 Epic E3 AC3: "Mark as paid requires admin_reference." */
+export const markPayoutPaidInputSchema = z.object({
+  payoutId: z.string().uuid(),
+  reference: z
+    .string()
+    .trim()
+    .min(3, "Enter a bank reference of at least 3 characters.")
+    .max(200, "Reference must be at most 200 characters."),
+});
+
+/** §10 Epic E3 AC4: "Mark as failed requires failure_note." */
+export const markPayoutFailedInputSchema = z.object({
+  payoutId: z.string().uuid(),
+  note: z
+    .string()
+    .trim()
+    .min(5, "Enter a failure note of at least 5 characters.")
+    .max(500, "Note must be at most 500 characters."),
+});
+
 export const resolveDisputeInputSchema = z.object({
   disputeId: z.string().uuid(),
   outcome: z.enum(["buyer", "seller"]),
