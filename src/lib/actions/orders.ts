@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { checkoutInputSchema, type CheckoutInput } from "@/lib/orders/checkout-schema";
 import { SHIPPED_AUTO_RELEASE_DAYS } from "@/lib/orders/timing-config";
 import { trackOrderReleased } from "@/lib/orders/order-events";
+import { authorizeOrderAction } from "@/lib/orders/authorize-order-action";
 import { computeCommission } from "@/lib/money";
 import { initializeTransaction } from "@/lib/paystack";
 import { track } from "@/lib/analytics/events";
@@ -194,21 +195,22 @@ export async function markShipped(orderId: string, trackingNote: string): Promis
   }
 
   const service = createServiceClient();
-  const { data: order } = await service
-    .from("orders")
-    .select("id, seller_id, status, paid_at")
-    .eq("id", orderId)
-    .maybeSingle();
-
-  if (!order) {
-    return err("not_found", "Order not found.");
+  const authResult = await authorizeOrderAction<{
+    id: string;
+    seller_id: string;
+    status: string;
+    paid_at: string | null;
+  }>(service, orderId, user.id, {
+    actorField: "seller_id",
+    allowedStatuses: ["paid"],
+    selectColumns: "id, seller_id, status, paid_at",
+    notAuthorizedMessage: "Only the seller can mark this order shipped.",
+    invalidTransitionMessage: "This order isn't ready to be marked shipped.",
+  });
+  if (!authResult.ok) {
+    return err(authResult.error.code, authResult.error.message);
   }
-  if (order.seller_id !== user.id) {
-    return err("not_authorized", "Only the seller can mark this order shipped.");
-  }
-  if (order.status !== "paid") {
-    return err("invalid_transition", "This order isn't ready to be marked shipped.");
-  }
+  const order = authResult.data;
 
   // §8.1 HARD RULE: auto_release_at = shipped_at + 7 days. Computed here,
   // in TypeScript, from the single config source — never hardcoded in SQL.
@@ -252,21 +254,22 @@ export async function confirmDelivery(orderId: string): Promise<Result<void>> {
   }
 
   const service = createServiceClient();
-  const { data: order } = await service
-    .from("orders")
-    .select("id, buyer_id, status, shipped_at")
-    .eq("id", orderId)
-    .maybeSingle();
-
-  if (!order) {
-    return err("not_found", "Order not found.");
+  const authResult = await authorizeOrderAction<{
+    id: string;
+    buyer_id: string;
+    status: string;
+    shipped_at: string | null;
+  }>(service, orderId, user.id, {
+    actorField: "buyer_id",
+    allowedStatuses: ["shipped"],
+    selectColumns: "id, buyer_id, status, shipped_at",
+    notAuthorizedMessage: "Only the buyer can confirm delivery.",
+    invalidTransitionMessage: "This order isn't ready to confirm delivery.",
+  });
+  if (!authResult.ok) {
+    return err(authResult.error.code, authResult.error.message);
   }
-  if (order.buyer_id !== user.id) {
-    return err("not_authorized", "Only the buyer can confirm delivery.");
-  }
-  if (order.status !== "shipped") {
-    return err("invalid_transition", "This order isn't ready to confirm delivery.");
-  }
+  const order = authResult.data;
 
   const { data: transitioned, error } = await service.rpc("confirm_order_delivered", {
     p_order_id: orderId,
@@ -310,20 +313,20 @@ export async function releaseOrder(orderId: string): Promise<Result<void>> {
   }
 
   const service = createServiceClient();
-  const { data: order } = await service
-    .from("orders")
-    .select("id, buyer_id, listing_id, status")
-    .eq("id", orderId)
-    .maybeSingle();
-
-  if (!order) {
-    return err("not_found", "Order not found.");
-  }
-  if (order.buyer_id !== user.id) {
-    return err("not_authorized", "Only the buyer can release this order.");
-  }
-  if (order.status !== "delivered") {
-    return err("invalid_transition", "This order isn't ready to be released.");
+  const authResult = await authorizeOrderAction<{
+    id: string;
+    buyer_id: string;
+    listing_id: string;
+    status: string;
+  }>(service, orderId, user.id, {
+    actorField: "buyer_id",
+    allowedStatuses: ["delivered"],
+    selectColumns: "id, buyer_id, listing_id, status",
+    notAuthorizedMessage: "Only the buyer can release this order.",
+    invalidTransitionMessage: "This order isn't ready to be released.",
+  });
+  if (!authResult.ok) {
+    return err(authResult.error.code, authResult.error.message);
   }
 
   const { data: transitioned, error } = await service.rpc("release_order", {

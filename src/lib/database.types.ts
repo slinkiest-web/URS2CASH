@@ -1172,6 +1172,35 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      raise_dispute: {
+        Args: {
+          p_buyer_id: string
+          p_detail: string
+          p_evidence_urls: string[]
+          p_order_id: string
+          p_reason: string
+          p_window_days: number
+        }
+        Returns: {
+          admin_notes: string | null
+          created_at: string
+          detail: string
+          evidence_urls: string[]
+          id: string
+          order_id: string
+          raised_by: string
+          reason: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "disputes"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       release_order: {
         Args: { p_actor_id?: string; p_actor_role: string; p_order_id: string }
         Returns: {

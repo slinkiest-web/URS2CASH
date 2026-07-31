@@ -25,3 +25,16 @@ export const SHIPPED_AUTO_RELEASE_DAYS = 7;
  * as "automatic, no admin approval gate" rather than "zero elapsed time."
  */
 export const DELIVERED_AUTO_RELEASE_HOURS = 72;
+
+/**
+ * §10 Epic D5 AC1: "within 7 days of delivered_at or auto_release_at,
+ * whichever is first." `orders.auto_release_at` (set by markShipped) is
+ * the SHIPPED->DELIVERED deadline, not a DELIVERED->RELEASED one, so
+ * "whichever is first" is implemented via the status guard itself (an
+ * order that already auto-released is no longer in the disputable status
+ * set) rather than by referencing that column directly — see
+ * docs/DECISIONS.md. This constant only governs the delivered_at + N days
+ * half of the check, passed as a parameter into raise_dispute(), never
+ * hardcoded in SQL.
+ */
+export const DISPUTE_WINDOW_DAYS = 7;

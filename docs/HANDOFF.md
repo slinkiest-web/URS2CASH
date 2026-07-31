@@ -628,3 +628,37 @@ Committed as `8c71e9c`, pushed to `origin/main`.
 **Next prompt should build:** disputes (§10 Epic D5) — `raiseDispute`, the 7-day window, freezing payout creation for a disputed order, and holding any `payouts` row that's already `queued` (§8.4 HARD RULE: "a payout row is never created for a disputed order until resolution"; §10 Epic D5 AC3: "if a payout row exists and is `queued`, it is held and flagged"). The cron auto-transitions already correctly skip `disputed` orders (verified live in Prompt 15) — this is about building the path that gets an order *into* that status, and deciding how an already-`queued` payout gets "held" given `payouts.status` today only has `queued`/`paid`/`failed` (no `held` value yet — a genuine design decision for that prompt, not resolved here).
 
 See `docs/DECISIONS.md` #67–#70 for this prompt's design choices.
+
+---
+
+## Prompt 17 — Dispute flow (Epic D5 AC1-AC7)
+
+**Note on process:** routed through `/plan-eng-review` before any code was written, per your explicit request, given this is money-adjacent (holding a queued payout) and touches the atomic order-lifecycle RPCs from Prompts 15/16. Four architecture decisions were surfaced and resolved via AskUserQuestion; an independent outside-voice pass (Claude subagent — Codex CLI not installed) then caught two real implementation bugs before they shipped — a hardcoded `interval '7 days'` directly in SQL (violating this codebase's own established "no hardcoded time windows" convention) and an `authorizeOrderAction()` helper signature that would have silently dropped analytics columns during a "zero behavior change" refactor — and disproved the review's own "race window" justification for the new `held` payout status, which was kept anyway, reframed as a HARD-RULE safety net rather than a live race defense. Full design doc + review report: `~/.gstack/projects/slinkiest-web-URS2CASH/bon-main-design-20260730-195138.md`.
+
+**Completed:**
+- Migration `supabase/migrations/20260731100000_dispute_flow.sql`: `payouts_status_enum` gains `held` (`queued`/`held`/`paid`/`failed`); `disputes_insert_participant` (Prompt 5) dropped and replaced with `disputes_insert_buyer_only` (`raised_by = auth.uid() AND o.buyer_id = auth.uid()` — the original allowed either party, a real gap this prompt closed); `raise_dispute()` — atomic, same shape as `mark_order_shipped`/`confirm_order_delivered`/`release_order`, `EXECUTE` revoked from every role but `service_role`. Takes `p_window_days` as a parameter (sourced from the new `DISPUTE_WINDOW_DAYS = 7` in `timing-config.ts`), never a hardcoded interval. `WHERE buyer_id = ... AND status IN ('paid','shipped','delivered') AND (delivered_at IS NULL OR now() <= delivered_at + N days)` is the actual guard — this alone implements AC1's "whichever is first" as an emergent property, since an already-released order is no longer in the allowed status set. Writes an `order_status_transitions` row (pre-image `status` captured via a `SELECT` before the `UPDATE` overwrites it, since `UPDATE ... RETURNING` only returns the new row). Also does `UPDATE payouts SET status='held' WHERE order_id=... AND status='queued'` in the same transaction — kept per Decision #71 as a HARD-RULE safety net even though provably unreachable under today's state machine.
+- `src/lib/orders/authorize-order-action.ts` (new): `authorizeOrderAction()` — the shared guard `markShipped`/`confirmDelivery`/`releaseOrder`/`raiseDispute` all now use (fetch order, check actor field, check status, return the typed row). Extracted this prompt after `raiseDispute` became the 4th action with the identical inline shape; the 3 existing actions were refactored onto it as a pure refactor (re-verified live and via the existing test suite — zero behavior change).
+- `src/lib/orders/dispute-schema.ts` (new): `disputeInputSchema` — the exact 7-value reason enum (mirroring the DB `disputes_reason_enum` CHECK, Prompt 5), 20-1000 char `detail`, up to 6 `evidenceUrls` each checked against `isAllowedImageUrl` (Decision #66 — the same crash-prevention guard listing photos use). 11 new unit tests (`dispute-schema.test.ts`).
+- `src/lib/actions/disputes.ts` (new): `raiseDispute(input: DisputeInput): Result<{ disputeId }>` — auth + Zod validation + `authorizeOrderAction` (buyer-only, `paid`/`shipped`/`delivered`) + the `raise_dispute` RPC + `track("order_disputed", { order_id, dispute_reason })` (the event was already fully defined in `analytics/events.ts` — nothing to add there, confirmed before writing this file). `resolveDispute(disputeId, outcome, notes): Result<void>` — signature-correct stub per PRD §11.2, returns `not_implemented`; Prompt 19 fills in the real admin resolution logic.
+- `database.types.ts` regenerated via the real Supabase CLI — `raise_dispute` RPC and the widened `payouts.status`/`disputes` types all present.
+
+**Verified live, against local Postgres, before writing this entry:**
+- Raising a dispute on a `delivered` order with an existing `queued` payout (hand-seeded, since a real payout can't naturally coexist with a disputable order per Decision #71's own reasoning) sets the order to `disputed`, `disputed_at`, and flips the payout to `held`.
+- `shipping_cost_dispute` is selectable and accepted as a reason (§8.4's mandated reason code).
+- A dispute raised on a still-`shipped` order (no `delivered_at` yet) succeeds with no time-window rejection — confirming a still-paid/shipped order has no cutoff from AC1.
+- Once an order is `disputed`, the cron's own `eligibleShipped`/`eligibleDelivered` queries (unchanged) no longer match it — re-confirmed directly against the query shape, not just by inspection.
+- A `released` order rejects a dispute attempt outright (0 rows returned, status unchanged) — AC7.
+- A seller attempting to raise a dispute (wrong actor) is rejected by `raise_dispute()`'s own guard, **and separately** a seller attempting a *direct* client-side insert (bypassing the server action entirely, simulated via `SET ROLE authenticated` + `request.jwt.claim.sub`) is rejected by the narrowed RLS policy — both layers verified independently, not just the app-level one.
+- A dispute raised on a `delivered` order 8 days past `delivered_at` (past the 7-day window) is rejected.
+- All hand-seeded fixtures (2 `auth.users`/`profiles`, 1 category, 5 listings, 5 orders, 1 `payout_accounts`, 1 hand-forced `payouts` row) cleaned up after verification — confirmed zero leftover rows.
+
+**Also verified:** `npx tsc --noEmit`, scoped `npx eslint "src/**/*.{ts,tsx}"`, `npx vitest run` (147/147 — 136 unchanged + 11 new `dispute-schema.test.ts`), `npm run build` all clean.
+
+**Known gaps, flagged rather than silently accepted:**
+- `resolveDispute`'s real logic (transition to `released`/`refunded`, payout creation/refund, `dispute_upheld_count`) is Prompt 19's scope — only the signature-correct stub ships now.
+- `held` → `queued` (un-holding a payout after a dispute resolves for the seller) is also Prompt 19's job.
+- `cancelOrder` (§10 Epic D3 AC6, a real PRD action) remains unbuilt — not named in this prompt's task, stays a known gap.
+
+**Next prompt should build:** ratings (§10 Epic D6) — `submitRating`, per this prompt's own context handoff. `src/lib/moderation/contact-detector.ts` already has a documented TODO specifying exactly how to wire review-text scanning once this action exists.
+
+See `docs/DECISIONS.md` #71–#74 for this prompt's design choices.

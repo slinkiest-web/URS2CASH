@@ -1281,3 +1281,99 @@ just confirmed it.
 **Revisit:** Yes, deliberately — when §10 Epic E3 (admin payout queue) is
 actually scheduled, build the real per-payout-list + cross-seller-total
 query against that epic's literal ACs, not against this entry's guesswork.
+
+---
+
+## From Prompt 17
+
+Routed through `/plan-eng-review` before any code was written, per your
+explicit request, given this is money-adjacent (holding a queued payout)
+and touches the atomic order-lifecycle RPCs from Prompts 15/16. An
+independent outside-voice pass (Claude subagent — Codex CLI not installed)
+caught two real implementation bugs before they shipped and disproved one
+of the review's own justifications. Full design doc + review report:
+`~/.gstack/projects/slinkiest-web-URS2CASH/bon-main-design-20260730-195138.md`.
+
+### 71. `payouts.status` gains a `held` value, kept as a HARD-RULE safety net despite being provably unreachable under today's state machine
+**Why:** §10 Epic D5 AC3 requires holding any already-`queued` payout when
+a dispute is raised. Initial reasoning was "defense-in-depth for a race
+window" — the outside-voice review checked that against this same design's
+own data-flow diagram and disproved it: `release_order()` is the only
+payout creator, it only fires on `status = 'delivered'`, and `raise_dispute()`
+atomically consumes that same status column with a mutually exclusive
+precondition (`status IN ('paid','shipped','delivered')`). A payout
+provably cannot exist while an order is still dispute-eligible — not
+rarely, but structurally impossible given the current state machine; there
+is no race to defend against. Presented to you as a cross-model tension.
+**You chose to keep `held` anyway**, reframed honestly: not a defense
+against a race that doesn't exist, but a defense against a *future* change
+(Prompt 19's `resolveDispute`, or a future refactor that loosens
+`release_order()`'s guard) accidentally creating the exact scenario AC3's
+HARD RULE forbids ("a disputed order can never produce a paid payout").
+Cost is one enum value and one `UPDATE` statement affecting zero rows
+today; the cost of being wrong about "provably impossible forever" is a
+real money-safety bug. `held` added to `payouts_status_enum`
+(`queued`/`held`/`paid`/`failed`), orthogonal to Prompt 16's `is_blocked`
+(a different axis — no verified account, vs. frozen due to dispute).
+**Revisit:** Only if Prompt 19's `resolveDispute` or a future refactor
+genuinely makes this branch reachable — at that point this becomes an
+active safety net rather than documented dead code, and the reasoning
+should be re-read against whatever changed.
+
+### 72. Dispute window computed from a status guard + `delivered_at + N days`, never by referencing `orders.auto_release_at`
+**Why:** §10 Epic D5 AC1's literal text ("7 days of `delivered_at` or
+`auto_release_at`, whichever is first") doesn't map onto this schema's
+actual columns — `orders.auto_release_at` (set by `markShipped`, Prompt 15)
+stores the `shipped_at + 7 days` SHIPPED→DELIVERED deadline, not a
+DELIVERED→RELEASED one; the 72-hour delivered-to-released window is a
+config constant (`DELIVERED_AUTO_RELEASE_HOURS`), never stored per-order.
+Literally computing `least(delivered_at + 7 days, auto_release_at)` would
+compare against the wrong deadline entirely. Flagged before writing code;
+resolved via `WHERE status IN ('paid','shipped','delivered')` alone
+implementing "whichever is first" as an emergent property (an order that
+already auto-released is no longer in this set, so the check fails on its
+own with zero explicit reference to `auto_release_at` needed), combined
+with, only when `delivered_at` is set, `now() <= delivered_at +
+make_interval(days => p_window_days)`. A still-`paid`/`shipped` order (no
+`delivered_at` yet) has no time cutoff from this AC at all. `p_window_days`
+is a parameter sourced from the new `DISPUTE_WINDOW_DAYS = 7` constant
+(`timing-config.ts`), never hardcoded in SQL — the first draft of
+`raise_dispute()` had hardcoded `interval '7 days'` directly, a direct
+violation of this migration file's own established convention (quoted
+verbatim from `20260729110000_order_transitions.sql`'s header comment),
+caught by the outside-voice review before it shipped.
+**Revisit:** No — this is now the correct, permanent shape.
+
+### 73. `disputes_insert_participant` (Prompt 5) narrowed to buyer-only
+**Why:** the original policy allowed either the buyer or the seller to
+insert a dispute (`o.buyer_id = auth.uid() OR o.seller_id = auth.uid()`),
+but §10 Epic D5 AC1 says only the buyer may raise one. `raiseDispute`'s own
+app-level check enforces buyer-only, but RLS is what actually gates a
+*direct* client-side insert via the Supabase JS SDK — before this prompt, a
+seller could bypass the server action entirely and insert their own
+dispute, unnoticed by any app-level check. Flagged before writing code;
+you chose to tighten it. New policy `disputes_insert_buyer_only` requires
+`raised_by = auth.uid() AND o.buyer_id = auth.uid()`. Verified live: a
+seller attempting a direct insert (via `SET ROLE authenticated` +
+`request.jwt.claim.sub`) is rejected with "new row violates row-level
+security policy for table disputes."
+**Revisit:** No.
+
+### 74. Shared `authorizeOrderAction()` helper extracted, refactoring 3 existing actions
+**Why:** `raiseDispute` would have been the 4th order-lifecycle action with
+the identical inline shape (fetch order → check actor → check status →
+call RPC) — none of `markShipped`/`confirmDelivery`/`releaseOrder`
+extracted this. Per your stated DRY preference and the "three similar
+lines" threshold, extracted `src/lib/orders/authorize-order-action.ts` now
+rather than deferring again. The first draft's signature had no
+column-selection mechanism, which would have silently dropped
+`markShipped`/`confirmDelivery`'s `paid_at`/`shipped_at` reads (needed for
+their `hours_since_paid`/`hours_since_shipped` analytics properties) during
+what was supposed to be a zero-behavior-change refactor — caught by the
+outside-voice review before it shipped. Fixed: the helper takes an explicit
+`selectColumns` string and a `Row` generic, so each caller gets exactly the
+columns it needs, typed. All 4 actions (including the 3 refactored ones)
+call it; `npx vitest run` (147/147, unchanged) and live re-verification of
+`markShipped`/`confirmDelivery`/`releaseOrder` confirm zero behavior
+change.
+**Revisit:** No.

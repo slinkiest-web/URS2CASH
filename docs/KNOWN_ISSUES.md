@@ -369,3 +369,24 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     config live.
     **Status:** open, low priority — will self-resolve (or reveal a
     problem) the first time this project deploys to Vercel for real.
+
+## From Prompt 17
+
+33. **`disputes_insert_participant` (Prompt 5) allowed either the buyer or the seller to insert a dispute row directly, contradicting §10 Epic D5 AC1's "buyer may raise a dispute."**
+    A live, real gap for the entire time between Prompt 5 and Prompt 17 —
+    RLS is what actually gates a direct client-side insert via the
+    Supabase JS SDK, independent of whatever an application-level check
+    does, and no app code called into the `disputes` table until this
+    prompt built `raiseDispute`, so the gap was never exercised in
+    practice, but it was live the whole time.
+    **Status:** resolved, Prompt 17. Policy narrowed to
+    `disputes_insert_buyer_only`. See Decision #73.
+
+34. **No admin-role verification mechanism exists anywhere (issue #12) — now also blocks `resolveDispute`'s real logic, not just Epic E.**
+    `resolveDispute` (Prompt 17) is a signature-correct stub for exactly
+    this reason: building real resolution logic (transition to
+    `released`/`refunded`, payout creation/refund, `dispute_upheld_count`)
+    ahead of an admin-role mechanism would have nothing legitimate to gate
+    it.
+    **Status:** open — not new, but now also a direct blocker for Prompt
+    19, not just a general Epic E prerequisite.
