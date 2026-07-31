@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyWebhookSignature } from "@/lib/paystack";
 import { createServiceClient } from "@/lib/supabase/service";
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-server";
+import { sendOrderPaidEmails } from "@/lib/email/senders/order-emails";
 import type { Json } from "@/lib/database.types";
 
 const envelopeSchema = z.object({
@@ -209,19 +210,31 @@ export async function POST(request: Request): Promise<Response> {
   // `buyer_order_ordinal` (docs/DECISIONS.md #59; that property is not in
   // the PRD anywhere, only is_repeat_buyer is, and AC5 names it
   // explicitly).
-  track("order_paid", {
-    order_id: order.id,
-    listing_id: order.listing_id,
-    category_id: category?.slug ?? "unknown",
-    amount_kobo: order.amount_kobo,
-    commission_kobo: order.commission_kobo,
-    is_repeat_buyer: isRepeatBuyer,
-  });
+  await track(
+    "order_paid",
+    {
+      order_id: order.id,
+      listing_id: order.listing_id,
+      category_id: category?.slug ?? "unknown",
+      amount_kobo: order.amount_kobo,
+      commission_kobo: order.commission_kobo,
+      is_repeat_buyer: isRepeatBuyer,
+    },
+    order.buyer_id
+  );
 
   // §9.1 HARD RULE: contact details release exactly at `paid`, never
   // earlier — that's now true (mark_order_paid already committed), and
   // this event is the observable record of it.
-  track("contact_details_released", { order_id: order.id });
+  await track("contact_details_released", { order_id: order.id }, order.buyer_id);
+
+  // §10 Epic D2 AC6: "Emails to buyer and seller within 10 seconds." §9.1:
+  // this is the one moment fulfilment contact details are allowed to
+  // appear in an email at all — never before `paid`. Best-effort: a send
+  // failure is logged, never blocks the webhook's 200 response (Resend
+  // being down must not make Paystack retry an already-successful payment
+  // transition).
+  await sendOrderPaidEmails(service, order.id);
 
   await markProcessed();
 

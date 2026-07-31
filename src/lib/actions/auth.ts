@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { authCredentialsSchema } from "@/lib/validation";
 import { sanitizeRedirectPath } from "@/lib/safe-redirect";
+import { track } from "@/lib/analytics/track-server";
 
 export type AuthFormState = {
   error?: string;
@@ -31,7 +32,7 @@ export async function signUpAction(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
   });
@@ -42,6 +43,17 @@ export async function signUpAction(
     // profiles row is only ever created by the DB trigger on a real insert
     // into auth.users, so a rejected signUp leaves nothing behind.
     return { error: error.message };
+  }
+
+  // §3.5: "seller_signed_up | Auth record created, role seller |
+  // signup_source." §4 HARD RULE: every account is both buyer and seller
+  // capability, no separate seller signup — "role seller" describes what
+  // this event measures (the growth-relevant signup), not a distinct
+  // account type. `signup_source` has no acquisition-channel tracking
+  // anywhere in this codebase yet (no UTM/referrer capture at signup); "web"
+  // is the only channel that exists.
+  if (data.user) {
+    await track("seller_signed_up", { signup_source: "web" }, data.user.id);
   }
 
   return {

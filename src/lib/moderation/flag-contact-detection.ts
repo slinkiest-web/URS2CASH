@@ -1,5 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-server";
 import type { ContactDetectionResult } from "@/lib/moderation/contact-detector";
 
 /**
@@ -24,6 +24,8 @@ export async function flagContactDetection(params: {
   listingId: string;
   categorySlug: string;
   detection: ContactDetectionResult;
+  /** Whoever submitted the flagged text — the seller for a listing, the buyer for a rating review. */
+  actorId: string;
 }): Promise<void> {
   if (!params.detection.detected) return;
 
@@ -46,9 +48,9 @@ export async function flagContactDetection(params: {
     return;
   }
 
-  track("contact_detail_flagged", {
-    category_id: params.categorySlug,
-    listing_id: params.listingId,
-    detected_type: detectedType,
-  });
+  await track(
+    "contact_detail_flagged",
+    { category_id: params.categorySlug, listing_id: params.listingId, detected_type: detectedType },
+    params.actorId
+  );
 }

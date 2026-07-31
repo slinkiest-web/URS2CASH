@@ -8,7 +8,7 @@ import type { CategorySlug } from "@/lib/categories/registry";
 import type { ConditionValue } from "@/lib/categories/shared";
 import { categoryRegistry } from "@/lib/categories/registry";
 import { uploadListingPhoto } from "@/lib/storage/upload-listing-photo";
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-client";
 import { nairaToKobo, formatKobo } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 

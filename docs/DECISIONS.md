@@ -1939,3 +1939,226 @@ flip to `false`. `listing_count_at_flip` is queried fresh at the moment of
 the decision (the live published count the admin was looking at when she
 clicked), not a stale value carried from the page load.
 **Revisit:** No.
+
+---
+
+## From Prompt 22
+
+### 103. Section-number citation drift resolved again: the real event schema is §3.5, the real stack section is §12.1, not "2.5"/"3.1"
+**Why:** same recurring pattern as Decisions #21/#26/#35/#54/#83/#84/#89/#90/#95
+— this prompt's own brief cited "section 2.5 (the complete event schema)"
+and "3.1 (Resend + React Email, PostHog)." Grepped the PRD's own headers:
+§2 is "The core question this MVP exists to answer" (no events in it); §3
+is "MVP success framework," and §3.5 specifically is the event schema
+(confirmed identical to the table this codebase's `events.ts` already
+implemented in full since Prompt 7); §3.1 is "Primary metric" (the
+second-listing-rate definition, nothing about Resend/PostHog at all) — the
+real stack table, naming "Email: Resend, React Email" and "Analytics:
+PostHog" explicitly, is §12.1. Built against the real section numbers
+throughout this prompt's migration-free, code-only work.
+**Revisit:** No.
+
+### 104. `is_first_listing` stays on `listing_draft_started`, never added to `listing_published` — the task brief conflated two different events' properties
+**Why:** the brief asked for "the seller listing ordinal / is_first_listing
+on listing published," reading as if both belong to one event.
+§3.5's actual table splits them: `listing_draft_started`'s properties are
+`category_id, is_first_listing`; `listing_published`'s are `listing_id,
+category_id, price_kobo, condition, photo_count, seller_listing_index,
+time_to_publish_seconds` — no `is_first_listing` anywhere on the second
+one. Both were already correctly placed on their respective events since
+Prompt 7/8 (verified by re-reading `listing-form.tsx`'s existing
+`listing_draft_started` call and `listings.ts`'s existing
+`listing_published` call before touching either) — "the seller listing
+ordinal" is `seller_listing_index`, already present and correct on
+`listing_published`. No code change was needed here at all; this decision
+exists so a future reader doesn't "fix" a gap that was never real.
+**Revisit:** No.
+
+### 105. No "buyer order ordinal" property on `order_paid` — extends Decision #59's already-settled reasoning to this prompt's identical re-ask
+**Why:** the task brief again asked for a "buyer order ordinal" on
+`order_paid`. §3.5's literal `order_paid` properties are `order_id,
+listing_id, category_id, amount_kobo, commission_kobo, is_repeat_buyer` —
+no ordinal, only the boolean `is_repeat_buyer`, which Decision #59 (Prompt
+14) already confirmed is the PRD's actual, deliberate choice over a
+numeric ordinal. Re-affirmed here rather than silently re-litigated,
+since the same request resurfacing in a later prompt's brief is worth a
+pointer back to the original reasoning, not a fresh debate.
+**Revisit:** No, unless the PRD itself is amended to add a numeric buyer
+order ordinal explicitly — Decision #59's original terms.
+
+### 106. Analytics is two modules, not one — `track-client.ts` (posthog-js) and `track-server.ts` (posthog-node) — because almost every event in this codebase fires server-side, and the two SDKs can't share one isomorphic implementation
+**Why:** a survey of every existing `track()` call site (21 events, ~25
+call sites) found only 4 are genuinely client-interaction events
+(`listing_draft_started`, `list_another_clicked`, `support_contact_opened`,
+`rating_prompt_shown`'s on-page-view leg) — everything else fires from a
+server action or route handler, since almost every mutation in this
+codebase is one. `posthog-node` has Node-only dependencies that cannot be
+safely imported into a client bundle (even behind a runtime `typeof
+window` check — bundlers still need to statically resolve the import
+unless using framework-specific server/client boundary primitives), so a
+single universal `track()` isn't safely isomorphic without real risk of
+either breaking the client bundle or silently pulling Node internals into
+it. Split into two modules with the identical exported name `track` (so
+each call site's code reads identically regardless of which one it
+imports) mirrors this codebase's own established precedent
+(`src/lib/supabase/client.ts` vs `server.ts` vs `service.ts`) rather than
+inventing a new pattern. Client `track()` takes 2 args (event,
+properties) — posthog-js manages `distinctId`/session automatically.
+Server `track()` takes a required 3rd `distinctId` arg — there is no
+ambient "current session" server-side the way there is in the browser.
+**Revisit:** No.
+
+### 107. Server-side event capture creates a fresh PostHog client and immediately calls `shutdown()` on every single call, rather than sharing one long-lived client
+**Why:** Vercel serverless functions can freeze the instant a response is
+sent; `posthog-node` buffers captured events internally rather than
+sending them synchronously, so a capture issued right before a server
+action or route handler returns can be silently dropped without an
+explicit flush. `client.shutdown()` flushes the queue and is the
+documented way to guarantee delivery in a short-lived serverless
+invocation. The cost is one extra HTTP round trip per event versus a
+shared, long-lived client (which would need its own lifecycle management
+this codebase has no natural place to hang) — an acceptable tradeoff at
+this project's volume for correctness over throughput, same posture this
+project already took for Resend (`sendEmail`, one send per call, no
+connection pooling infrastructure built either).
+**Revisit:** If event volume ever becomes a real cost/latency concern,
+revisit sharing a client across a single request's multiple `track()`
+calls (several call sites fire 2+ events) — not before there's a reason
+to.
+
+### 108. `distinctId` rule: the human whose action or outcome an event most directly concerns — not necessarily whoever's session happened to trigger it
+**Why:** for state-described events (§3.5's own wording, e.g.
+`order_released`: "Order reaches released," not "buyer/system releases
+order"), `distinctId` is the event's natural subject — the seller for
+`order_shipped`/`order_released`/`listing_*` events, the buyer for
+`checkout_started`/`order_paid`/`order_delivered`/`order_disputed`/
+`order_refunded`/`rating_*`/`contact_details_released`. For
+actor-described events (§3.5's own wording names the actor explicitly,
+e.g. `payout_marked_paid`: "Admin marks payout paid," `category_enabled`:
+"Admin flips `browsable`"), `distinctId` is that actor — the admin, even
+though the event's *consequence* affects a seller. This split is why
+`order_released` uses `seller_id` even when a cron job or an admin
+dispute-resolution triggered it (the identity of who caused a state
+change doesn't change whose business outcome it's about), while
+`payout_marked_paid` uses the admin's id even though the seller is who's
+paid. `contact_detail_flagged` is the one property-threading exception:
+its subject is whoever *submitted* the flagged text (the seller for a
+listing, the buyer for a rating review) — `flagContactDetection()` gained
+a required `actorId` parameter threaded from each of its three call sites
+to make this correct rather than defaulting to a single convention.
+**Revisit:** No — this is the resolved, documented rule; apply it to any
+future event rather than re-deriving one ad hoc.
+
+### 109. `listing_viewed` is deferred via `next/server`'s `after()`, the one call site where blocking on PostHog would be directly user-visible; anonymous visitors collapse to a shared `"anonymous"` distinctId
+**Why:** every other `track()` call site is inside a server action or
+route handler — a mutation's response, where a few hundred milliseconds of
+added latency from an awaited PostHog round trip is unremarkable (the PRD
+itself tolerates far more for email: "within 10 seconds"). `listing_viewed`
+fires from a Server Component's render body — awaiting it there would
+directly slow down the page itself, the one place this project's own
+performance-conscious history (Lighthouse LCP concerns, Decision #66's
+crash-prevention work) would treat that as a real regression. `after()`
+schedules the capture to run once the response has already been sent,
+guaranteed to complete on Vercel's serverless runtime (`waitUntil`
+support) without blocking render. Anonymous (signed-out) visitors have no
+stable per-visitor id anywhere in this codebase — no cookie-based
+anonymous-id thread from client to server exists — so they collapse to a
+literal `"anonymous"` distinctId string, a known, documented simplification
+(the event's own properties — `referrer_surface`, `category_id` — are
+still captured correctly per-event regardless; only cross-visit identity
+resolution for anonymous traffic is lost).
+**Revisit:** If per-visitor anonymous identity ever matters (e.g., funnel
+analysis from first view to purchase for a not-yet-signed-in visitor),
+this needs real session-id forwarding infrastructure — out of this
+prompt's scope.
+
+### 110. Server-fired events carry no `session_id` — a real, accepted gap, not a fabricated value
+**Why:** §3.5 states "All events carry `user_id`, `timestamp`,
+`session_id`," which is literally true only for posthog-js's own
+browser-session concept (automatic, zero code needed for the 4 genuinely
+client-fired events). The large majority of this codebase's events fire
+server-side with no browser session to attach a `session_id` to at all —
+building that correlation would require forwarding a client-generated
+session identifier into every server action and route handler call
+(reading `posthog.get_session_id()` client-side, threading it through
+every mutation), a real, separate piece of infrastructure this prompt does
+not build. Rather than invent a fake session id (a UUID with no actual
+session behind it, which would misrepresent the data to anyone querying
+PostHog later), server-fired events simply don't carry one — an honest gap,
+documented here and in `track-server.ts`'s own module comment, not
+silently papered over.
+**Revisit:** Yes, if session-level funnel analysis across server-fired
+events becomes a real product need — build the forwarding mechanism then,
+informed by which specific funnels actually need it.
+
+### 111. No "delivered" email exists — only `shipped` and `released` have PRD-specified email touchpoints, despite the task brief listing "shipped, delivered, released: the relevant party"
+**Why:** re-read every Epic D AC mentioning email explicitly (grepped the
+whole PRD for "email"/"notified"): §10 Epic D3 AC5 says "Buyer notified by
+email on ship"; §10 Epic D4 AC7 says "Seller notified on release." Epic
+D4's own AC6 — the one covering the `delivered` transition — only says
+"`order_delivered` and `order_released` fire," with no email language at
+all attached to `delivered` specifically. The brief's "delivered: the
+relevant party" doesn't correspond to any literal PRD text. Resolved by
+omission, same posture as every other citation-drift decision: no
+`OrderDeliveredEmail` template was built, and no call site sends one.
+**Revisit:** No, unless a future PRD revision explicitly adds a
+delivered-transition email AC.
+
+### 112. `order_released`'s seller email and the buyer's rating-prompt email both fire from the one shared `trackOrderReleased()` helper, not duplicated per call site
+**Why:** §10 Epic D4 AC7 ("seller notified on release") and §10 Epic D6
+AC10 ("buyer emailed a rating prompt on release") are the same trigger
+moment for two different recipients. `trackOrderReleased()`
+(`src/lib/orders/order-events.ts`) was already the single shared function
+behind all three paths that can reach `released` (buyer early release,
+the 72-hour auto-release cron, and — since Prompt 19 — admin
+dispute-resolution-for-seller); extending it to send both emails, rather
+than adding the calls at each of the three individual call sites, means
+every release path gets identical, correct email behavior for free, with
+no risk of one path being updated and another forgotten.
+**Revisit:** No.
+
+### 113. Dispute-opened admin notification needs a new `ADMIN_ALERT_EMAIL` env var, deliberately distinct from `NEXT_PUBLIC_SUPPORT_EMAIL`
+**Why:** §10 Epic D5 AC6 requires "both parties and admin notified" on a
+raised dispute. `NEXT_PUBLIC_SUPPORT_EMAIL` (existing since Prompt 11) is
+the public, buyer-facing contact link on listing detail (§9.1's structural
+support route) — reusing it for an internal operational alert would
+conflate a public contact address with an internal ops inbox, two
+genuinely different audiences and trust levels. `ADMIN_ALERT_EMAIL` is
+server-only (never `NEXT_PUBLIC_`), and `sendDisputeOpenedEmails()`
+no-ops that one leg (logged, not thrown) when it's unset — same "not
+configured" posture as every other optional integration in this codebase,
+verified live: the buyer and seller legs still send correctly with
+`ADMIN_ALERT_EMAIL` unset.
+**Revisit:** No.
+
+### 114. Email send failures never block, roll back, or change the return value of the mutation they're attached to
+**Why:** every sender call site in this prompt is a bare `await
+send*Email(...)` with no error branch — a bounced or failed email must
+never make `markShipped` fail, never make a webhook return a non-200
+(which would make Paystack retry an already-successful payment
+transition), and never make `resolveDispute` report failure after the
+actual DB transition (and, on the refund path, the actual Paystack refund
+call) already succeeded. `sendEmail()` itself catches every failure mode
+internally and returns a `{ok:false}` result that no caller in this
+prompt inspects — matching the same "best-effort side effect, never the
+reason a real business operation fails" posture this codebase already
+established for `flagContactDetection` (Prompt 9) and `track()` itself.
+**Revisit:** No.
+
+### 115. `@react-email/components` added as a real dependency; one shared `EmailLayout` wrapper, nine thin per-message templates rather than one generic parameterised template
+**Why:** §12.1 names "React Email" as the stack choice, not just "Resend
+with some HTML strings" — `@react-email/components` (Html, Body,
+Container, Text, Heading, Hr, Preview) gives genuinely email-client-safe
+building blocks rather than hand-rolled inline-styled divs that risk
+breaking in Outlook/Gmail's stripped-down CSS support. One shared
+`EmailLayout` (branding header/footer, consistent spacing) is reused by
+every template — matching §13 Definition of Done item 14's "Template
+copy: structure defined, wording not," this is that shared structure.
+Nine separate template files (rather than one generic
+heading/body/CTA-parameterised template) were chosen because the actual
+data shapes genuinely differ in a way that matters: the two `order_paid`
+emails carry structurally different contact-detail payloads (seller's
+phone vs. buyer's full delivery block), and collapsing them into one
+generic shape would either lose that distinction or need the same amount
+of per-call-site conditional logic anyway, just relocated.
+**Revisit:** No.

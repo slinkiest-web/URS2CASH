@@ -46,13 +46,17 @@ export type MetricsSnapshot = {
 /**
  * PRD §10 Epic E4 / §3 (MVP success framework). Every figure here is
  * computed directly from `listings`/`orders`/`disputes`/`moderation_flags`
- * via the SQL functions in `20260803090000_admin_metrics.sql` — there is
- * no queryable event stream yet (`track()` is still a console.log stub;
- * Prompt 22 is where that gets consolidated). See that migration's own
+ * via the SQL functions in `20260803090000_admin_metrics.sql`. Real
+ * PostHog capture now exists (Prompt 22), but these metrics stay
+ * DB-computed rather than switching to event-sourced queries — the
+ * database is the authoritative record for anything with a native
+ * relational definition (a listing's `published_at`, an order's
+ * `released_at`), and re-deriving the same facts from a separate analytics
+ * store would be redundant, not more accurate. See that migration's own
  * header comment for the full reasoning behind each metric's exact
- * definition, including the citation-drift corrections against this
- * prompt's own task brief (§3, not "§2"; 30-day buyer repeat window, not
- * 60; no "US-13"/"US-14" exist in the PRD).
+ * definition, including the citation-drift corrections against Prompt 21's
+ * own task brief (§3, not "§2"; 30-day buyer repeat window, not 60; no
+ * "US-13"/"US-14" exist in the PRD).
  */
 export async function getMetricsSnapshot(): Promise<MetricsSnapshot> {
   const service = createServiceClient();

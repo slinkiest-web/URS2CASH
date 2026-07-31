@@ -1115,3 +1115,172 @@ metric computations may be worth cross-checking against, or replacing
 with, real event-sourced figures.
 
 See `docs/DECISIONS.md` #95–#102 for this prompt's design choices.
+
+---
+
+## Prompt 22 — Real analytics + real email (PostHog + Resend/React Email)
+
+**Note on citation drift, resolved before writing any code (same posture
+as every prior prompt's citation-drift decisions — see Decisions #103–105):**
+the task brief cited "section 2.5" for the event schema and "3.1" for the
+stack table; the real sections are §3.5 and §12.1. The brief also asked for
+"is_first_listing on listing published" (it's actually on
+`listing_draft_started`, already correctly placed since Prompt 7/8 — no
+change needed) and a "buyer order ordinal" on `order_paid` (already
+resolved once before, Decision #59 — `is_repeat_buyer` is the PRD's actual
+property, not an ordinal). Also: "shipped, delivered, released" as the
+three email touchpoints — the real PRD only attaches an email to `shipped`
+(§10 Epic D3 AC5) and `released` (§10 Epic D4 AC7); `delivered` has no
+PRD-specified email anywhere (Decision #111), so no `OrderDeliveredEmail`
+was built.
+
+**Completed — analytics:**
+- `src/lib/analytics/events.ts`: unchanged in content (all 21 events were
+  already correctly named/typed since Prompt 7), stripped down to types
+  only — the `console.log` stub implementation moved out.
+- `src/lib/analytics/track-server.ts` (new, `posthog-node`) and
+  `track-client.ts` (new, `posthog-js`) — a real client/server split,
+  necessary because almost every event in this codebase fires server-side
+  (Decision #106) and the two SDKs can't safely share one isomorphic
+  implementation. Server `track()` creates a fresh PostHog client and
+  calls `shutdown()` on every call, guaranteeing delivery isn't dropped by
+  a Vercel serverless function freezing before its buffered queue flushes
+  (Decision #107) — the cost is one extra HTTP round trip per event,
+  matching this project's existing "correctness over throughput at MVP
+  volume" posture for Resend. Both no-op (log and return) when their
+  respective PostHog env var isn't set, same "not configured" posture as
+  Paystack.
+- `src/components/analytics/posthog-provider.tsx` (new): initializes
+  posthog-js once, mounted in `src/app/layout.tsx` around every page.
+- **Closed a real, pre-existing gap:** `seller_signed_up` (§3.5's very
+  first event) had no call site anywhere in the codebase — added to
+  `signUpAction` (`src/lib/actions/auth.ts`), firing with the new user's
+  id the instant `supabase.auth.signUp()` succeeds.
+- Every one of the ~25 existing `track()` call sites updated: the 4
+  genuinely client-fired ones (`listing_draft_started`,
+  `list_another_clicked`, `support_contact_opened`, the on-page-view leg
+  of `rating_prompt_shown`) just got their import corrected to
+  `track-client`; the ~20 server-fired ones got `await` added and a
+  `distinctId` argument, following one documented rule (Decision #108: the
+  event's natural subject for state-described events, the literal actor
+  for actor-described ones — §3.5's own wording tells you which). One
+  real threading change: `flagContactDetection()` gained a required
+  `actorId` parameter (whoever submitted the flagged text — seller for a
+  listing, buyer for a rating review), since it's called from three
+  different places with three different actors.
+- `listing_viewed` (fires from a Server Component's render body, not a
+  mutation) is deferred via `next/server`'s `after()` so the PostHog round
+  trip never blocks the page's own render (Decision #109) — the one call
+  site where that would be a direct, user-visible regression, unlike every
+  action/route-handler call site where a few hundred milliseconds is
+  unremarkable.
+
+**Completed — email (Resend + React Email, §12.1):**
+- Added `@react-email/components` as a real dependency (`resend` already
+  bundled `@react-email/render` transitively) and `posthog-node`.
+- `src/lib/email/send-email.ts`: the one `resend.emails.send()` call site
+  in the codebase. `src/lib/email/get-user-email.ts`: `profiles` has no
+  email column — resolves via the service-role admin API
+  (`auth.admin.getUserById`), same mechanism `scripts/promote-admin.ts`
+  already uses in reverse.
+- `src/lib/email/components/email-layout.tsx`: one shared branded wrapper
+  (`@react-email/components`), reused by all 9 templates (Decision #115).
+- **9 templates** (`src/lib/email/templates/`): `OrderPaidBuyerEmail`
+  (seller's `display_name` + fulfilment phone — §9.1's exact release list,
+  never before `paid`), `OrderPaidSellerEmail` (buyer's full delivery
+  block, same rule), `OrderShippedEmail`, `OrderReleasedEmail`,
+  `RatingPromptEmail` (one template, an `isReminder` prop for the 72-hour
+  reminder), `DisputeOpenedEmail` and `DisputeResolvedEmail` (one template
+  each, a `recipientRole`/`outcome` prop rather than three/two near-duplicate
+  files), `PayoutPaidEmail`, `ListingSuspendedEmail`.
+- **5 sender modules** (`src/lib/email/senders/`), each fetching exactly
+  the data its template needs and calling `sendEmail`:
+  `order-emails.ts` (`sendOrderPaidEmails` — both legs in one call,
+  `sendOrderShippedEmail`, `sendOrderReleasedEmail`), `rating-emails.ts`
+  (`sendRatingPromptEmail`), `dispute-emails.ts`
+  (`sendDisputeOpenedEmails` — buyer + seller + a new `ADMIN_ALERT_EMAIL`-gated
+  admin leg, Decision #113; `sendDisputeResolvedEmails` — buyer + seller,
+  reads the outcome off the dispute row's own `status`), `payout-emails.ts`,
+  `listing-emails.ts`.
+- Wired into every real call site: the Paystack webhook
+  (`sendOrderPaidEmails`, right after `order_paid`/`contact_details_released`
+  fire), `markShipped` (`sendOrderShippedEmail`), the shared
+  `trackOrderReleased()` helper (`sendOrderReleasedEmail` **and**
+  `sendRatingPromptEmail` — both release-time emails from the one place all
+  three release paths already share, Decision #112), the rating-reminders
+  cron (`sendRatingPromptEmail` with `isReminder: true`), `raiseDispute`
+  (`sendDisputeOpenedEmails`), `resolveDispute`'s both branches
+  (`sendDisputeResolvedEmails`), `markPayoutPaid` (`sendPayoutPaidEmail`),
+  `suspendListing` (`sendListingSuspendedEmail`).
+- Every send is best-effort: a bare `await send*Email(...)` with no error
+  branch anywhere (Decision #114) — a bounced email must never fail a
+  webhook's 200, roll back a real DB transition, or contradict a Paystack
+  refund that already happened.
+- New env vars documented in `.env.local.example`: `EMAIL_FROM`,
+  `ADMIN_ALERT_EMAIL` (`RESEND_API_KEY` already existed, unused until now).
+
+**Verified live, before writing this entry:**
+- **Template rendering** (18 checks, `@react-email/render`'s `render()`
+  called directly against real fixture props, no live services needed):
+  every one of the 9 templates renders real HTML; `OrderPaidBuyerEmail`
+  correctly contains the seller's phone and states delivery is excluded
+  from the amount (§8.4); `OrderPaidSellerEmail` correctly contains the
+  buyer's full delivery block; **every other template — shipped, released,
+  rating prompt, both dispute templates, payout, suspended — contains zero
+  phone-shaped strings**, confirmed by regex, not just by not passing the
+  prop (the strongest form of the HARD RULE: contact details can't leak
+  into a template that structurally never receives them as a prop).
+- **A full purchase-journey trace against local Postgres** (not mocks): a
+  real listing → paid → shipped → delivered → released → payout-marked-paid
+  order, plus a separate suspended-listing fixture and a separate
+  disputed-then-refunded order, driving the real `track()` and `send*Email`
+  functions with real DB data end to end. Every event fired with the exact
+  correct name/payload/distinctId (visible in the "not configured,
+  skipping" logs — e.g. `order_paid` firing with the right `order_id`/
+  `amount_kobo`/`commission_kobo`/`is_repeat_buyer` at exactly the paid
+  step, `payout_marked_paid` at exactly the payout step). Every email
+  sender resolved the exact correct recipient email and subject at the
+  exact correct step — `sendOrderPaidEmails` correctly addressed both the
+  buyer and the seller with different subjects; `sendDisputeOpenedEmails`
+  correctly sent to both parties and correctly, visibly skipped the admin
+  leg with `ADMIN_ALERT_EMAIL` unset, exactly the documented "not
+  configured" behavior, not a silent failure.
+- `listing_published`'s `seller_listing_index` (the "seller listing
+  ordinal") confirmed present and correct on a real inserted row.
+- A running `npm run dev` instance: home, sign-up, search, and a
+  nonexistent `/l/[id]` (confirming the `after()`-deferred `listing_viewed`
+  call doesn't error when `notFound()` short-circuits before it's ever
+  scheduled) all render cleanly with no server errors.
+- **Not verified: real delivery to PostHog or Resend past the "not
+  configured" boundary** — both API keys are unset in this environment,
+  same class of limitation as issue #27 (Paystack). Known Issue #44.
+
+**Also verified:** `npx tsc --noEmit` (clean on the first pass despite the
+scale of this prompt's changes — ~30 files touched), scoped `npx eslint
+"src/**/*.{ts,tsx}" "scripts/**/*.ts"`, `npx vitest run` (157/157,
+unchanged), `npm run build` all clean. All fixtures cleaned up via a final
+`supabase db reset`. Verification required a real Node module-resolution
+workaround worth recording: rendering a React Email template (needs
+`react-dom/server`, incompatible with the `react-server` module-resolution
+condition) and calling code that imports `server-only`-guarded modules
+(needs the `react-server` condition to make `server-only` a safe no-op
+outside Next's own bundler) cannot both run in the same Node process — the
+verification script was split into two separate `tsx` invocations for
+exactly this reason.
+
+**Known gaps, flagged rather than silently accepted:**
+- Real PostHog/Resend delivery unverified in this environment (issue #44).
+- No `posthog.identify()` — client-fired events stay anonymous even for
+  signed-in users (issue #45).
+- Server-fired events carry no `session_id` (issue #46, Decision #110) —
+  real gap, no fabricated placeholder value.
+- Anonymous listing views share one `"anonymous"` distinctId (issue #47).
+- No "delivered" email — deliberate, not a gap (issue #48, closed by
+  design).
+
+**Next prompt should build:** the definition-of-done check (§13) — the
+final prompt in this build sequence, per this prompt's own context
+handoff. Walk every DoD item against the real, live codebase (not by
+re-reading old handoff entries) and report what's actually true today.
+
+See `docs/DECISIONS.md` #103–#115 for this prompt's design choices.

@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { submitRating } from "@/lib/actions/ratings";
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-client";
 import { Button } from "@/components/ui/button";
 
 const SCORES = [1, 2, 3, 4, 5] as const;

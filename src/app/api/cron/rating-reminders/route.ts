@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { isAuthorizedCronRequest } from "@/lib/cron/verify-cron-secret";
 import { createServiceClient } from "@/lib/supabase/service";
 import { RATING_REMINDER_HOURS } from "@/lib/orders/timing-config";
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-server";
+import { sendRatingPromptEmail } from "@/lib/email/senders/rating-emails";
 
 const BATCH_LIMIT = 200;
 
@@ -33,37 +34,39 @@ async function handle(request: Request): Promise<Response> {
   const [{ data: releasedCandidates }, { data: refundedCandidates }] = await Promise.all([
     service
       .from("orders")
-      .select("id")
+      .select("id, buyer_id")
       .eq("status", "released")
       .is("rating_reminder_sent_at", null)
       .lte("released_at", cutoff)
       .limit(BATCH_LIMIT),
     service
       .from("orders")
-      .select("id")
+      .select("id, buyer_id")
       .eq("status", "refunded")
       .is("rating_reminder_sent_at", null)
       .lte("refunded_at", cutoff)
       .limit(BATCH_LIMIT),
   ]);
 
-  const candidateIds = [...(releasedCandidates ?? []), ...(refundedCandidates ?? [])].map((r) => r.id);
+  const candidates = [...(releasedCandidates ?? []), ...(refundedCandidates ?? [])];
+  const candidateIds = candidates.map((r) => r.id);
 
   let reminderCount = 0;
   if (candidateIds.length > 0) {
     const { data: alreadyRated } = await service.from("ratings").select("order_id").in("order_id", candidateIds);
     const ratedIds = new Set((alreadyRated ?? []).map((r) => r.order_id));
-    const unratedIds = candidateIds.filter((id) => !ratedIds.has(id));
+    const unrated = candidates.filter((c) => !ratedIds.has(c.id));
 
-    for (const orderId of unratedIds) {
+    for (const order of unrated) {
       const { error } = await service
         .from("orders")
         .update({ rating_reminder_sent_at: new Date().toISOString() })
-        .eq("id", orderId)
+        .eq("id", order.id)
         .is("rating_reminder_sent_at", null);
 
       if (!error) {
-        track("rating_prompt_shown", { order_id: orderId });
+        await track("rating_prompt_shown", { order_id: order.id }, order.buyer_id);
+        await sendRatingPromptEmail(service, order.id, { isReminder: true });
         reminderCount++;
       }
     }

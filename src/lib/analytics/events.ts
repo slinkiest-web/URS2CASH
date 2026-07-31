@@ -1,15 +1,23 @@
 /**
- * PostHog analytics event stubs.
+ * PostHog event registry.
  *
  * HARD RULE (PRD §3.5): every event below fires from the code path that owns
- * it, in the same commit as the feature. This file is the single registry of
- * all event names and their required properties.
+ * it. This file is the single registry of all event names and their
+ * required properties — types only, no implementation. See `track-client.ts`
+ * (posthog-js, browser) and `track-server.ts` (posthog-node, everywhere
+ * else) for the real capture calls; almost every event in this codebase
+ * fires server-side, since almost every mutation is a server action or
+ * route handler, not a client-side interaction.
  *
- * Sink: PostHog. All events carry user_id, timestamp, session_id (PostHog
- * adds these automatically when identify() is called).
- *
- * Implementation: events are called via posthog-js on the client, or via
- * the PostHog Node SDK in server actions.
+ * Sink: PostHog. All events carry user_id (PostHog's `distinctId`),
+ * timestamp (both SDKs stamp this automatically), and session_id.
+ * `session_id` is posthog-js's own automatic browser-session concept —
+ * genuinely present on every client-fired event with zero code needed here.
+ * Server-fired events (the majority) have no browser session to attach one
+ * to; this is a real, documented limitation (see docs/DECISIONS.md), not a
+ * silent gap — building session-forwarding infrastructure so a server
+ * action's event can carry the browser tab's session id is a real, separate
+ * piece of work this prompt does not take on.
  */
 
 /** Union of all valid event names — derived directly from PRD §3.5. */
@@ -81,12 +89,3 @@ export type EventProperties = {
   payout_marked_paid: { payout_id: string; hours_since_released: number };
   category_enabled: { category_id: string; listing_count_at_flip: number };
 };
-
-/**
- * TODO(prompt 22): replace this stub with real posthog-js (client) / PostHog
- * Node SDK (server) calls. Stubbed to a structured log for now so every call
- * site is exercised and correctly typed ahead of the full event layer.
- */
-export function track<E extends EventName>(event: E, properties: EventProperties[E]): void {
-  console.log("[analytics]", event, properties);
-}

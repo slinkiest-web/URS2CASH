@@ -505,3 +505,58 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     built here.
     **Status:** open, deliberate scope boundary — revisit only if a future
     prompt's brief explicitly asks for historical/trend reporting.
+
+---
+
+## From Prompt 22
+
+44. **No real, live delivery of a PostHog event or a Resend email has been observed end-to-end — both `NEXT_PUBLIC_POSTHOG_KEY` and `RESEND_API_KEY` are unset in this environment.**
+    Same class of limitation as issue #27 (no completed hosted Paystack
+    payment observed live) — the code paths are built for real (real
+    `posthog-node`/`posthog-js` calls, real `resend.emails.send()`) and
+    live-verified up to the "not configured, skipping" boundary: every
+    event fires with the exact right name/payload/distinctId, every email
+    sender resolves the exact right recipient/subject/content, confirmed
+    via a real 20+-step purchase-journey trace against local Postgres
+    (`docs/HANDOFF.md`'s Prompt 22 entry). What's unverified is delivery
+    past that boundary — a real PostHog project key or Resend API key and
+    verified sending domain, neither available in this environment.
+    **Status:** open — closes the moment either service is configured with
+    real credentials (local `.env.local` or a real deployment) and one
+    action is exercised by hand.
+
+45. **No `posthog.identify()` call exists anywhere — client-fired events (the 4 genuinely browser-side ones) stay on posthog-js's anonymous distinct id even for a signed-in user.**
+    A signed-in user's `listing_draft_started`/`list_another_clicked`/
+    `support_contact_opened`/on-page-view `rating_prompt_shown` events are
+    never merged with her server-fired events (which correctly use her real
+    `user.id`) in PostHog's own person-merging model. Building this
+    requires calling `posthog.identify(user.id)` once after sign-in/on
+    session hydration — real, scoped work, not built here since no AC asked
+    for cross-event person merging specifically.
+    **Status:** open — natural companion to issue #46 below; both are
+    "PostHog identity resolution" and could be closed together.
+
+46. **Server-fired events (the large majority) carry no `session_id` — §3.5's "all events carry session_id" is only true for the 4 client-fired ones.**
+    No client-to-server session-id forwarding infrastructure exists
+    anywhere in this codebase. See Decision #110 for the full reasoning
+    behind not fabricating a fake value instead.
+    **Status:** open — real infrastructure work (reading
+    `posthog.get_session_id()` client-side, threading it through every
+    server action/route handler that fires an event), out of this prompt's
+    scope. Revisit only if session-level funnel analysis across
+    server-fired events becomes a real product need.
+
+47. **Anonymous (signed-out) listing views collapse to one shared `"anonymous"` PostHog distinctId — no per-visitor anonymous identity.**
+    See Decision #109. The event's own properties (`referrer_surface`,
+    `category_id`) are still captured correctly per event; only cross-visit
+    identity resolution for signed-out traffic is lost.
+    **Status:** open, low priority — would need the same session-forwarding
+    infrastructure as issue #46 to close properly.
+
+48. **No "delivered" transaction email exists — only `shipped` and `released` have PRD-specified email touchpoints.**
+    The task brief listed "shipped, delivered, released: the relevant
+    party," but no PRD AC attaches an email to the `delivered` transition
+    specifically (§10 Epic D4 AC6 only says the event fires). See Decision
+    #111 — deliberate, not an oversight.
+    **Status:** closed by design — revisit only if a future PRD revision
+    adds this AC explicitly.

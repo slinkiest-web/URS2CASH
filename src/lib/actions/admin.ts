@@ -12,7 +12,9 @@ import {
   markPayoutFailedInputSchema,
   setCategoryFlagsInputSchema,
 } from "@/lib/admin/admin-schemas";
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-server";
+import { sendListingSuspendedEmail } from "@/lib/email/senders/listing-emails";
+import { sendPayoutPaidEmail } from "@/lib/email/senders/payout-emails";
 import { ok, err, type Result } from "@/lib/result";
 
 /**
@@ -31,8 +33,8 @@ import { ok, err, type Result } from "@/lib/result";
  * filters to `status in ('published', 'sold')` at the RLS level — a
  * `suspended` row is structurally invisible the instant this commits.
  *
- * AC3's seller email is a call site only, same deferred-to-Prompt-22
- * pattern as every other notification in this codebase.
+ * AC3: seller emailed with the reason, real (Resend + React Email) as of
+ * this prompt.
  */
 export async function suspendListing(listingId: string, reason: string): Promise<Result<void>> {
   const admin = await requireAdmin();
@@ -52,9 +54,12 @@ export async function suspendListing(listingId: string, reason: string): Promise
     p_reason: parsed.data.reason,
   });
 
-  if (error || !transitioned || transitioned.length === 0) {
+  const listing = transitioned?.[0];
+  if (error || !listing) {
     return err("not_found", "Listing not found.");
   }
+
+  await sendListingSuspendedEmail(service, listing.id);
 
   return ok(undefined);
 }
@@ -274,8 +279,11 @@ export async function setCategoryFlags(
 
     // §3.5: every other event's category_id is the registry slug, not the
     // DB UUID (e.g. createListing's listing_published) — matching that
-    // convention here, not the row's primary key.
-    track("category_enabled", { category_id: category.slug, listing_count_at_flip: count ?? 0 });
+    // convention here, not the row's primary key. distinctId is the admin —
+    // §3.5's own text ("Admin flips browsable") describes this event by
+    // actor, unlike the order-lifecycle events, which describe themselves
+    // by state ("Order reaches released").
+    await track("category_enabled", { category_id: category.slug, listing_count_at_flip: count ?? 0 }, admin.data.adminId);
   }
 
   return ok(undefined);
@@ -298,8 +306,8 @@ export async function setCategoryFlags(
  * tracked entirely on `payouts`, never mirrored onto `orders` (see
  * docs/DECISIONS.md for the citation-drift note this resolves).
  *
- * AC6 (seller emailed on paid) is a call site only, same Prompt-22
- * deferral as every other notification in this codebase.
+ * AC6: seller emailed on paid, real (Resend + React Email) as of this
+ * prompt.
  */
 export async function markPayoutPaid(payoutId: string, reference: string): Promise<Result<void>> {
   const admin = await requireAdmin();
@@ -329,7 +337,11 @@ export async function markPayoutPaid(payoutId: string, reference: string): Promi
     ? Math.round((Date.now() - new Date(order.released_at).getTime()) / 3_600_000)
     : 0;
 
-  track("payout_marked_paid", { payout_id: payout.id, hours_since_released: hoursSinceReleased });
+  // distinctId is the admin — §3.5's own text ("Admin marks payout paid")
+  // describes this event by actor, same reasoning as category_enabled above.
+  await track("payout_marked_paid", { payout_id: payout.id, hours_since_released: hoursSinceReleased }, admin.data.adminId);
+
+  await sendPayoutPaidEmail(service, payout.id);
 
   return ok(undefined);
 }

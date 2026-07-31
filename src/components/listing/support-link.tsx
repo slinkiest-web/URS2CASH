@@ -1,6 +1,6 @@
 "use client";
 
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-client";
 
 /**
  * PRD §9.1 HARD RULE: there is no buyer-to-seller contact mechanism, pre or

@@ -7,7 +7,7 @@ import { hasBlockingOrder } from "@/lib/listings/has-blocking-order";
 import { listingLimitMessage } from "@/lib/listings/limits";
 import { scanForContactDetails } from "@/lib/moderation/contact-detector";
 import { flagContactDetection } from "@/lib/moderation/flag-contact-detection";
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-server";
 import { ok, err, type Result } from "@/lib/result";
 import type { Json } from "@/lib/database.types";
 
@@ -46,10 +46,11 @@ export async function createListing(input: CreateListingInput): Promise<Result<{
   const validation = validateListingSubmission(input);
 
   if (!validation.ok) {
-    track("listing_publish_failed", {
-      category_id: input.categorySlug,
-      failure_reason: validation.error.message,
-    });
+    await track(
+      "listing_publish_failed",
+      { category_id: input.categorySlug, failure_reason: validation.error.message },
+      user.id
+    );
     return err(validation.error.code, validation.error.message);
   }
 
@@ -61,11 +62,11 @@ export async function createListing(input: CreateListingInput): Promise<Result<{
       return err("not_authenticated", "Sign in to publish a listing.");
     }
     if (gate.blocked) {
-      track("listing_limit_reached", {
-        seller_id: user.id,
-        tier: gate.limit.tier,
-        active_listing_count: gate.activeCount,
-      });
+      await track(
+        "listing_limit_reached",
+        { seller_id: user.id, tier: gate.limit.tier, active_listing_count: gate.activeCount },
+        user.id
+      );
       return err(
         "listing_limit_reached",
         listingLimitMessage(gate.limit.tier, gate.limit.cap as number)
@@ -131,6 +132,7 @@ export async function createListing(input: CreateListingInput): Promise<Result<{
     listingId: listing.id,
     categorySlug: data.categoryConfig.slug,
     detection: contactDetection,
+    actorId: user.id,
   });
 
   // §10 Epic B1 AC10: published immediately, no approval step. AC13: fires
@@ -138,15 +140,19 @@ export async function createListing(input: CreateListingInput): Promise<Result<{
   // seller_listing_index and time_to_publish_seconds from listing_draft_started.
   // Never fires for a draft save — publishing hasn't happened yet.
   if (!input.saveAsDraft) {
-    track("listing_published", {
-      listing_id: listing.id,
-      category_id: data.categoryConfig.slug,
-      price_kobo: data.priceKobo,
-      condition: data.condition,
-      photo_count: data.photoUrls.length,
-      seller_listing_index: listing.seller_listing_index,
-      time_to_publish_seconds: Math.round((Date.now() - input.draftStartedAt) / 1000),
-    });
+    await track(
+      "listing_published",
+      {
+        listing_id: listing.id,
+        category_id: data.categoryConfig.slug,
+        price_kobo: data.priceKobo,
+        condition: data.condition,
+        photo_count: data.photoUrls.length,
+        seller_listing_index: listing.seller_listing_index,
+        time_to_publish_seconds: Math.round((Date.now() - input.draftStartedAt) / 1000),
+      },
+      user.id
+    );
   }
 
   return ok({ listingId: listing.id });
@@ -266,11 +272,11 @@ export async function updateListing(input: UpdateListingInput): Promise<Result<v
       return err("not_authenticated", "Sign in to publish your listing.");
     }
     if (gate.blocked) {
-      track("listing_limit_reached", {
-        seller_id: user.id,
-        tier: gate.limit.tier,
-        active_listing_count: gate.activeCount,
-      });
+      await track(
+        "listing_limit_reached",
+        { seller_id: user.id, tier: gate.limit.tier, active_listing_count: gate.activeCount },
+        user.id
+      );
       return err(
         "listing_limit_reached",
         listingLimitMessage(gate.limit.tier, gate.limit.cap as number)
@@ -316,20 +322,25 @@ export async function updateListing(input: UpdateListingInput): Promise<Result<v
     listingId: input.listingId,
     categorySlug: data.categoryConfig.slug,
     detection: contactDetection,
+    actorId: user.id,
   });
 
   if (nextStatus === "published" && listing.status === "draft") {
-    track("listing_published", {
-      listing_id: input.listingId,
-      category_id: data.categoryConfig.slug,
-      price_kobo: data.priceKobo,
-      condition: data.condition,
-      photo_count: data.photoUrls.length,
-      seller_listing_index: updated.seller_listing_index,
-      // No draftStartedAt survives a resumed-later draft — created_at is the
-      // closest available proxy for when this listing was first started.
-      time_to_publish_seconds: Math.round((Date.now() - new Date(listing.created_at).getTime()) / 1000),
-    });
+    await track(
+      "listing_published",
+      {
+        listing_id: input.listingId,
+        category_id: data.categoryConfig.slug,
+        price_kobo: data.priceKobo,
+        condition: data.condition,
+        photo_count: data.photoUrls.length,
+        seller_listing_index: updated.seller_listing_index,
+        // No draftStartedAt survives a resumed-later draft — created_at is
+        // the closest available proxy for when this listing was first started.
+        time_to_publish_seconds: Math.round((Date.now() - new Date(listing.created_at).getTime()) / 1000),
+      },
+      user.id
+    );
   }
 
   return ok(undefined);

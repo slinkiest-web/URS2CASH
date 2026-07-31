@@ -9,7 +9,8 @@ import { trackOrderReleased } from "@/lib/orders/order-events";
 import { authorizeOrderAction } from "@/lib/orders/authorize-order-action";
 import { computeCommission } from "@/lib/money";
 import { initializeTransaction } from "@/lib/paystack";
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-server";
+import { sendOrderShippedEmail } from "@/lib/email/senders/order-emails";
 import { ok, err, type Result } from "@/lib/result";
 
 const trackingNoteSchema = z
@@ -126,7 +127,7 @@ export async function initiateCheckout(
   // §3.5: fires once the order genuinely exists, independent of whether the
   // Paystack call below succeeds — "checkout started" is true the moment a
   // pending order is on record, not only once payment is fully underway.
-  track("checkout_started", { listing_id: listing.id, price_kobo: amountKobo });
+  await track("checkout_started", { listing_id: listing.id, price_kobo: amountKobo }, user.id);
 
   const appUrl = process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";
 
@@ -229,7 +230,10 @@ export async function markShipped(orderId: string, trackingNote: string): Promis
 
   // §10 Epic D3 AC4.
   const hoursSincePaid = order.paid_at ? Math.round((Date.now() - new Date(order.paid_at).getTime()) / 3_600_000) : 0;
-  track("order_shipped", { order_id: orderId, hours_since_paid: hoursSincePaid });
+  await track("order_shipped", { order_id: orderId, hours_since_paid: hoursSincePaid }, user.id);
+
+  // §10 Epic D3 AC5: "Buyer notified by email on ship."
+  await sendOrderShippedEmail(service, orderId);
 
   return ok(undefined);
 }
@@ -283,7 +287,7 @@ export async function confirmDelivery(orderId: string): Promise<Result<void>> {
   const hoursSinceShipped = order.shipped_at
     ? Math.round((Date.now() - new Date(order.shipped_at).getTime()) / 3_600_000)
     : 0;
-  track("order_delivered", { order_id: orderId, hours_since_shipped: hoursSinceShipped });
+  await track("order_delivered", { order_id: orderId, hours_since_shipped: hoursSinceShipped }, user.id);
 
   return ok(undefined);
 }

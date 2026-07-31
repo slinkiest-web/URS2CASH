@@ -5,7 +5,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { submitRatingInputSchema, type SubmitRatingInput } from "@/lib/ratings/submit-rating-schema";
 import { scanForContactDetails } from "@/lib/moderation/contact-detector";
 import { flagContactDetection } from "@/lib/moderation/flag-contact-detection";
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-server";
 import { ok, err, type Result } from "@/lib/result";
 
 /**
@@ -115,19 +115,23 @@ export async function submitRating(input: SubmitRatingInput): Promise<Result<{ r
         categorySlug = category?.slug ?? "unknown";
       }
 
-      await flagContactDetection({ listingId: order.listing_id, categorySlug, detection });
+      await flagContactDetection({ listingId: order.listing_id, categorySlug, detection, actorId: user.id });
     }
   }
 
   const concludedAt = order.released_at ?? order.refunded_at;
   const daysSinceReleased = concludedAt ? Math.round((Date.now() - new Date(concludedAt).getTime()) / 86_400_000) : 0;
-  track("rating_submitted", {
-    order_id: data.orderId,
-    seller_id: order.seller_id,
-    score: data.score,
-    has_review: data.review !== undefined,
-    days_since_released: daysSinceReleased,
-  });
+  await track(
+    "rating_submitted",
+    {
+      order_id: data.orderId,
+      seller_id: order.seller_id,
+      score: data.score,
+      has_review: data.review !== undefined,
+      days_since_released: daysSinceReleased,
+    },
+    user.id
+  );
 
   return ok({ ratingId });
 }

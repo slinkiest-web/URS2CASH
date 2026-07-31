@@ -15,7 +15,8 @@ import { SellerReputationBlock } from "@/components/reputation/seller-reputation
 import { BuyForm } from "@/components/checkout/buy-form";
 import { ResendConfirmationForm } from "@/components/auth/resend-confirmation-form";
 import { formatKobo } from "@/lib/money";
-import { track } from "@/lib/analytics/events";
+import { after } from "next/server";
+import { track } from "@/lib/analytics/track-server";
 
 type Params = { id: string };
 
@@ -77,12 +78,25 @@ export default async function ListingDetailPage({ params }: { params: Promise<Pa
 
   // §10 Epic C1 AC6 / §3.5: fired unconditionally on every render of this
   // page — there is no separate analytics task, the flow that owns the
-  // event emits it inline.
-  track("listing_viewed", {
-    listing_id: listing.id,
-    category_id: listing.categorySlug,
-    referrer_surface: inferReferrerSurface(requestHeaders.get("referer")),
-  });
+  // event emits it inline. Deferred via `after()` so the PostHog network
+  // round trip never blocks the page's own render — unlike a server
+  // action's mutation response, this IS the page, so latency here is
+  // directly user-visible. Anonymous visitors collapse to a shared
+  // "anonymous" distinctId (documented limitation, see docs/DECISIONS.md)
+  // — no stable per-visitor anonymous id is threaded from client to server
+  // anywhere in this codebase; the event's own properties (referrer_surface,
+  // category_id) are still captured correctly regardless.
+  after(() =>
+    track(
+      "listing_viewed",
+      {
+        listing_id: listing.id,
+        category_id: listing.categorySlug,
+        referrer_surface: inferReferrerSurface(requestHeaders.get("referer")),
+      },
+      user?.id ?? "anonymous"
+    )
+  );
 
   const attributeDisplay = buildAttributeDisplay(listing.categorySlug, listing.attributes);
   const conditionInfo = CONDITION_DEFINITIONS[listing.condition];

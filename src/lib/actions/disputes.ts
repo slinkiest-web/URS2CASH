@@ -9,7 +9,8 @@ import { requireAdmin } from "@/lib/admin/require-admin";
 import { resolveDisputeInputSchema } from "@/lib/admin/admin-schemas";
 import { refundTransaction } from "@/lib/paystack";
 import { trackOrderReleased } from "@/lib/orders/order-events";
-import { track } from "@/lib/analytics/events";
+import { track } from "@/lib/analytics/track-server";
+import { sendDisputeOpenedEmails, sendDisputeResolvedEmails } from "@/lib/email/senders/dispute-emails";
 import { ok, err, type Result } from "@/lib/result";
 
 /**
@@ -81,11 +82,12 @@ export async function raiseDispute(input: DisputeInput): Promise<Result<{ disput
     return err("invalid_transition", "This order isn't eligible for a dispute right now.");
   }
 
-  // §10 Epic D5 AC5/AC6: notifies both parties + admin. Email wiring is
-  // Prompt 22's scope (same as every other order_* event so far); admin
-  // "notification" is the dispute row itself (status='open'), the future
-  // Epic E2 queue's input, same precedent as moderation_flags (Decision #58).
-  track("order_disputed", { order_id: data.orderId, dispute_reason: data.reason });
+  await track("order_disputed", { order_id: data.orderId, dispute_reason: data.reason }, user.id);
+
+  // §10 Epic D5 AC6: "Both parties and admin notified." Best-effort — a
+  // send failure is logged, never fails the dispute itself (the dispute
+  // row already committed above).
+  await sendDisputeOpenedEmails(service, dispute.id);
 
   return ok({ disputeId: dispute.id });
 }
@@ -149,7 +151,7 @@ export async function resolveDispute(disputeId: string, outcome: "buyer" | "sell
 
   const { data: order } = await service
     .from("orders")
-    .select("id, listing_id, status, amount_kobo, paystack_reference")
+    .select("id, listing_id, status, amount_kobo, paystack_reference, buyer_id")
     .eq("id", dispute.order_id)
     .maybeSingle();
   if (!order || order.status !== "disputed") {
@@ -169,6 +171,8 @@ export async function resolveDispute(disputeId: string, outcome: "buyer" | "sell
     }
 
     await trackOrderReleased(service, releasedOrder);
+    // §10 Epic E2 AC5: "Both parties emailed the outcome."
+    await sendDisputeResolvedEmails(service, data.disputeId);
     return ok(undefined);
   }
 
@@ -201,6 +205,8 @@ export async function resolveDispute(disputeId: string, outcome: "buyer" | "sell
     return err("resolution_failed", "The refund was processed but the order could not be updated. Contact engineering.");
   }
 
-  track("order_refunded", { order_id: order.id, refund_reason: data.notes });
+  await track("order_refunded", { order_id: order.id, refund_reason: data.notes }, order.buyer_id);
+  // §10 Epic E2 AC5: "Both parties emailed the outcome."
+  await sendDisputeResolvedEmails(service, data.disputeId);
   return ok(undefined);
 }
