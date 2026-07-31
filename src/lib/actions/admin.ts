@@ -10,6 +10,7 @@ import {
   hideReviewInputSchema,
   markPayoutPaidInputSchema,
   markPayoutFailedInputSchema,
+  setCategoryFlagsInputSchema,
 } from "@/lib/admin/admin-schemas";
 import { track } from "@/lib/analytics/events";
 import { ok, err, type Result } from "@/lib/result";
@@ -205,6 +206,76 @@ export async function dismissFlag(flagId: string): Promise<Result<void>> {
 
   if (error || !updated) {
     return err("not_found", "Flag not found or already reviewed.");
+  }
+
+  return ok(undefined);
+}
+
+/**
+ * PRD §11.2: setCategoryFlags(categoryId, { listable?, browsable? }):
+ * Result<void>. §10 Epic E4 / §6.2.
+ *
+ * HARD RULE (§6.2): `listable` and `browsable` are independent booleans —
+ * the input schema requires at least one but never forces both, and the
+ * update below only ever touches the field(s) actually supplied. HARD RULE
+ * (§3.4/§6.2/E4 AC5): this is the ONLY place `browsable` is ever written —
+ * grep the codebase for `.update(` touching `categories` before adding
+ * another one; no cron, trigger, or threshold check may flip it, ever.
+ *
+ * §10 Epic E4 AC4: `category_enabled` fires only on the specific
+ * `browsable` false -> true transition (never on listable changes, never
+ * when it's already true, never on a flip to false) — the current value is
+ * read before the update to detect the real transition, not inferred from
+ * the input alone (a caller could in principle pass `browsable: true` on a
+ * category that's already browsable; that must not re-fire the event).
+ * `listing_count_at_flip` is the live published count at the moment of
+ * this decision, the same figure the admin was looking at on
+ * `/admin/categories` when she clicked.
+ */
+export async function setCategoryFlags(
+  categoryId: string,
+  flags: { listable?: boolean; browsable?: boolean }
+): Promise<Result<void>> {
+  const admin = await requireAdmin();
+  if (!admin.ok) {
+    return err(admin.error.code, admin.error.message);
+  }
+
+  const parsed = setCategoryFlagsInputSchema.safeParse({ categoryId, ...flags });
+  if (!parsed.success) {
+    return err("invalid_input", parsed.error.issues[0]?.message ?? "Nothing to update.");
+  }
+  const data = parsed.data;
+
+  const service = createServiceClient();
+
+  const { data: category } = await service.from("categories").select("id, slug, browsable").eq("id", data.categoryId).maybeSingle();
+  if (!category) {
+    return err("not_found", "Category not found.");
+  }
+
+  const isBrowsableFlip = data.browsable === true && category.browsable === false;
+
+  const update: { listable?: boolean; browsable?: boolean } = {};
+  if (data.listable !== undefined) update.listable = data.listable;
+  if (data.browsable !== undefined) update.browsable = data.browsable;
+
+  const { error } = await service.from("categories").update(update).eq("id", data.categoryId);
+  if (error) {
+    return err("update_failed", "Could not update category flags. Try again.");
+  }
+
+  if (isBrowsableFlip) {
+    const { count } = await service
+      .from("listings")
+      .select("id", { count: "exact", head: true })
+      .eq("category_id", data.categoryId)
+      .eq("status", "published");
+
+    // §3.5: every other event's category_id is the registry slug, not the
+    // DB UUID (e.g. createListing's listing_published) — matching that
+    // convention here, not the row's primary key.
+    track("category_enabled", { category_id: category.slug, listing_count_at_flip: count ?? 0 });
   }
 
   return ok(undefined);

@@ -983,3 +983,135 @@ per §3.1/§3.4). `setCategoryFlags` should reuse `requireAdmin()` unchanged,
 same as every action Prompts 19/20 already built.
 
 See `docs/DECISIONS.md` #89–#94 for this prompt's design choices.
+
+---
+
+## Prompt 21 — Category flags + metrics dashboard (Epic E4, §3 success framework)
+
+**Note on citation drift, resolved before writing any code (same posture
+as every prior prompt's citation-drift decisions):** the task brief cited
+"section 2" for the success framework, "2.5"/"2.6" for events/the
+browsable threshold, "section 4" for independent listable/browsable flags,
+and labelled the two ACs "US-13"/"US-14." None of those match the PRD's
+real structure — the success framework is §3 (§3.1 primary metric, §3.2
+supporting metrics, §3.4 kill/expand, §3.5 events), independent flags are
+§6.2, and "US-13"/"US-14" don't exist anywhere (grepped). The brief's
+"buyer repeat rate within 60 days" also contradicts §3.2's own literal
+"(30 day)," and its 9-metric bullet list dropped payout latency (a real
+§3.2 metric) in favor of listing abandonment rate (not one of §3.2's 8
+named metrics, though grounded in §3.4.1's diagnostic text) — built both,
+not a swap, per this prompt's own "do not invent or omit" HARD RULE. See
+Decisions #95–#101.
+
+**Completed:**
+- Migration `supabase/migrations/20260803090000_admin_metrics.sql`: 9 SQL
+  functions computing every §3 metric directly from `listings`/`orders`/
+  `disputes`/`moderation_flags`/`payouts` — there is no queryable event
+  stream to compute from yet (`track()` is still a `console.log` stub,
+  Decision #97): `metric_second_listing_rate` (§3.1, the primary metric),
+  `metric_median_time_to_second_listing`,
+  `metric_listing_to_sale_conversion_by_category`,
+  `metric_median_time_to_first_sale_by_category`,
+  `metric_weekly_seller_cohort_retention`, `metric_buyer_repeat_rate_30d`
+  (30 days, not the brief's 60 — Decision #96), `metric_dispute_rate`,
+  `metric_leakage_signal_rate` (scoped to `source = 'auto_contact_detect'`
+  only — Decision #101, Known Issue #40), `metric_listing_abandonment_rate`
+  (a DB-derived proxy — Decision #98, Known Issue #41), and
+  `metric_payout_latency_hours` (Decision #99). Every "within N days"
+  metric applies the same unbiased-cohort treatment: only subjects whose
+  full window has already elapsed are counted at all (Decision #100). All
+  `EXECUTE`-revoked from `public`/`anon`/`authenticated`, granted only to
+  `service_role`.
+- `src/lib/admin/get-category-overview.ts`: `getCategoryOverview()` — every
+  category with live published listing count, distinct seller count (no
+  30-day restriction — §6.2's "live" count), and 30-day listing-to-sale
+  conversion (reusing the same SQL function the metrics dashboard also
+  calls, one definition, two call sites), plus the §3.4 browsable-gate
+  thresholds (30 listings / 10 sellers / 15% conversion) exported as named
+  constants for both the guidance-text copy and a `meetsBrowsableGate`
+  flag.
+- `src/lib/admin/get-metrics.ts`: `getMetricsSnapshot()` — wraps all 9 SQL
+  functions plus a diagnostic-context query (total sellers who've ever
+  published, weeks since the earliest published listing) for §3.4.1's own
+  "evaluate at 8+ weeks, 50+ sellers" gate.
+- `src/lib/actions/admin.ts`: `setCategoryFlags(categoryId, { listable?,
+  browsable? })` — `requireAdmin()` first, like every admin action.
+  `listable`/`browsable` are independently settable (§6.2 HARD RULE); the
+  category's *current* `browsable` value is read before the update so
+  `category_enabled` fires only on a genuine false→true transition, never
+  on a `listable`-only change or a no-op true→true call (Decision #102),
+  with `listing_count_at_flip` queried fresh at the moment of the decision
+  and `category_id` set to the registry slug (matching every other event's
+  convention, not the DB UUID).
+- `src/app/admin/categories/page.tsx` + `CategoryFlagsForm` (new client
+  component, two independent checkboxes, a confirm() specifically on
+  flipping browsable to true): the category flags screen, AC1/AC2/AC3.
+- `src/app/admin/metrics/page.tsx`: the metrics dashboard — the primary
+  metric with its 40%-target/20%-kill-threshold context, all 8 supporting
+  metrics (including payout latency), the two by-category tables (conversion,
+  time-to-first-sale), the weekly cohort retention grid (incomplete future
+  weeks rendered as "—", not a misleading 0%), and the §3.4.1 diagnostic
+  matrix — rendered as PRD-literal prose in each of its 4 defined cells,
+  the current reading highlighted only when it maps unambiguously onto one
+  of them and the "reliable reading" gate (8+ weeks, 50+ sellers) is met; a
+  Beauty conversion strictly between 20% and 40% is explicitly shown as
+  falling outside both defined columns, not force-fit into either. A
+  display aid only — nothing here writes anything.
+- Nav links (`Categories`, `Metrics`) added to `src/app/admin/layout.tsx`.
+
+**Verified live, against local Postgres, via a 20-check `tsx` script with
+hand-constructed fixtures spanning multiple sellers/buyers/categories with
+known, hand-computed expected values (not just "did it run without
+erroring") before writing this entry:**
+- `second_listing_rate`: correctly excludes a seller whose first listing
+  is only 5 days old (not yet cohort-eligible) from the denominator
+  entirely; correctly counts exactly 1 of 3 eligible sellers reaching a
+  second listing (33.3%).
+- `median_time_to_second_listing`: exactly 9 days for the one seller with
+  a real gap between her first and second listing.
+- `listing_to_sale_conversion_by_category`: exactly 4 eligible beauty
+  listings, exactly 2 converted (50%), matching the hand-built fixture
+  precisely (2 sold, 2 not).
+- `median_time_to_first_sale_by_category`: exactly 15 days (the median of
+  two sellers' 5-day and 25-day gaps).
+- `buyer_repeat_rate_30d`: a buyer whose second release lands 15 days
+  after her first (within 30) is correctly counted as a repeat (100% of 1
+  eligible buyer).
+- `dispute_rate`: exactly 1 of 2 paid orders disputed (50%).
+- `leakage_signal_rate`/`listing_abandonment_rate`/`payout_latency_hours`:
+  each matches its fixture exactly (the latter down to an exact 48-hour
+  gap between a hand-set `released_at` and `paid_at`).
+- **The single most important thing this prompt needed to prove live: a
+  `browsable` toggle takes effect on the very next request, with no server
+  restart in between.** Against a real running `npm run dev` instance:
+  `/c/fashion` with `browsable = false` → `404`; flipped `true` via direct
+  DB update (simulating `setCategoryFlags`'s own write) → the *same*
+  running server now returns `200` for `/c/fashion` with no restart;
+  flipped back to `false` → `404` again. Confirms §6.2/AC3's "takes effect
+  without a deploy" isn't just true by architectural inspection (no
+  caching layer exists) but actually observed.
+
+**Also verified:** `npx tsc --noEmit`, scoped `npx eslint "src/**/*.{ts,tsx}" "scripts/**/*.ts"`, `npx vitest run` (157/157, unchanged — this prompt added no new pure-function modules), `npm run build` all clean (`/admin/categories` + `/admin/metrics` registered). All fixtures cleaned up via a final `supabase db reset`.
+
+**Known gaps, flagged rather than silently accepted:**
+- Leakage signal rate undercounts §3.2's own definition — "admin flagged
+  leakage cases" aren't isolable from other admin moderation reasons in
+  the current schema. Known Issue #40.
+- Listing abandonment rate is a proxy, not the literal event ratio (which
+  isn't persisted). Known Issue #41.
+- The weekly cohort retention query hasn't been profiled at scale (fine
+  for MVP volumes). Known Issue #42.
+- No historical/trend view — every figure is a live point-in-time
+  snapshot, not asked for, not built. Known Issue #43.
+
+**Next prompt should build:** the real email layer (Resend + React Email,
+per PRD §12.1's stack table) and consolidate `track()` from its
+`console.log` stub into real PostHog calls — every order/rating/dispute/
+payout/category lifecycle event already has a correctly-typed, correctly
+-placed call site (Prompts 13 through 21, none skipped); this is purely
+about making those calls real, not finding new places to add them. Once
+that lands, revisit Decision #97/#98 — some of this prompt's DB-only
+metric computations may be worth cross-checking against, or replacing
+with, real event-sourced figures.
+
+See `docs/DECISIONS.md` #95–#102 for this prompt's design choices.

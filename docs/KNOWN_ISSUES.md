@@ -461,3 +461,47 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     shown — not a full order view.
     **Status:** open, cosmetic — revisit if a future prompt's brief asks
     for a general admin order-lookup surface.
+
+---
+
+## From Prompt 21
+
+40. **Leakage signal rate undercounts §3.2's own definition — "admin flagged leakage cases" can't be isolated from other admin moderation reasons in the current schema.**
+    `moderation_flags.source = 'admin'` is one undifferentiated bucket
+    covering every admin-initiated flag (skin-lightening, counterfeit,
+    repeat-violation, and genuine leakage alike, per Prompt 19's
+    `SUSPEND_LISTING_REASONS`) — `metric_leakage_signal_rate()` counts only
+    `source = 'auto_contact_detect'` rows, the half of §3.2's definition
+    the schema can precisely isolate. See Decision #101.
+    **Status:** open — would need a `moderation_flags.category`/type
+    taxonomy within the `admin` source to close properly; a real,
+    independently useful addition to the moderation queue too, not built
+    here since it wasn't asked for and would be scope creep on a
+    read-only metrics prompt.
+
+41. **Listing abandonment rate is a DB-derived proxy, not the literal `listing_draft_started`-vs-`listing_published` ratio §3.4.1's diagnostic text describes — it understates true abandonment.**
+    A visitor who opens the listing form and leaves before the first
+    autosave leaves zero footprint in `listings` at all; the proxy
+    (stuck-`draft`-status rows / all rows ever created) can only see
+    abandonment that got as far as a saved draft. See Decision #98.
+    **Status:** open — closes once a real, persisted `listing_draft_started`
+    event exists (Prompt 22+ territory, per that prompt's own context
+    handoff), not fixable within this prompt's DB-only scope.
+
+42. **The weekly seller cohort retention query (`metric_weekly_seller_cohort_retention()`) is O(cohorts × sellers × week-offsets) via a per-row `EXISTS` check — fine at MVP data volumes, not reviewed for scale.**
+    No index-driven optimisation was attempted; the query was written for
+    correctness and readability against the schema's existing indexes, not
+    profiled against a large synthetic dataset. Flagged as a forward-looking
+    note, not a defect — nothing in the PRD specifies a performance target
+    for this admin-only, low-traffic page.
+    **Status:** open, low priority — revisit if `/admin/metrics` becomes
+    slow in practice, not before.
+
+43. **The metrics dashboard is a point-in-time snapshot with no historical trend view (no chart, no "compare to last week").**
+    Not asked for by §10 Epic E4's ACs or this prompt's own brief, which
+    both describe a live dashboard of current figures, not a time series.
+    Every underlying metric IS computed from timestamped source data, so a
+    future trend view is buildable without new instrumentation — just not
+    built here.
+    **Status:** open, deliberate scope boundary — revisit only if a future
+    prompt's brief explicitly asks for historical/trend reporting.

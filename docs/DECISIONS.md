@@ -1809,3 +1809,133 @@ nothing AC1 asks for per-payout is actually lost.
 seller's queued payouts legitimately resolve to *different* accounts (e.g.
 she changed banks mid-queue) — worth showing per-row at that point, not
 before.
+
+---
+
+## From Prompt 21
+
+### 95. Section-number citation drift resolved: the real success framework is §3, not "section 2"; independent flags are §6.2, not "section 4"; no "US-13"/"US-14" exist anywhere in the PRD
+**Why:** this prompt's task brief cited "section 2 (the success framework
+and all its metrics)," "2.5 (events)," "2.6 (the browsable threshold)," and
+labelled the two ACs "US-13"/"US-14." Re-read the PRD's own headers before
+writing any code: §2 is "The core question this MVP exists to answer" (no
+metrics in it — it's the 2.2-transactions-per-seller framing that motivates
+§3); §3 is "MVP success framework" (§3.1 primary metric, §3.2 supporting
+metrics, §3.4 kill/expand — the real browsable-gate numbers, "30 or more
+active published listings from 10 or more distinct sellers... conversion...
+at or above 15%," live here); §3.5 is the event schema. §4 is "Users and
+roles" — it only says admin "controls category flags," nothing about the
+flags' own independence, which is §6.2's HARD RULE. Grepped the whole PRD
+for "US-13" and "US-14" — zero hits; the real ACs are §10 Epic E4. Same
+shape as every prior citation-drift decision (#21, #26, #35, #54, #83, #84,
+#89, #90) — built against the real section numbers throughout this
+prompt's migration and code, not the brief's shifted ones.
+**Revisit:** No.
+
+### 96. Buyer repeat rate is computed on a 30-day window, not the task brief's 60
+**Why:** §3.2's own literal text: "Buyer repeat rate (30 day)." The task
+brief asked for "buyer repeat rate within 60 days" — a direct numeric
+contradiction, not just a citation-number slip. This prompt's own HARD
+RULE ("Metrics are the ones enumerated in PRD section [3]; do not invent
+or omit") cuts decisively in favor of the PRD's stated window over the
+brief's paraphrase — `metric_buyer_repeat_rate_30d()` matches the name and
+the number both.
+**Revisit:** No, unless the PRD itself is amended to widen this window —
+that would be a deliberate spec change, not a correction of this reading.
+
+### 97. Every metric is computed directly from `listings`/`orders`/`disputes`/`moderation_flags`/`payouts` — none from an event stream, because none exists yet to query
+**Why:** `track()` (`src/lib/analytics/events.ts`) has been a
+`console.log` stub since Prompt 7 and remains one as of this prompt — this
+prompt's own context handoff says the *next* prompt is where "the
+analytics event layer used as stubs throughout" gets consolidated. §3.5's
+own "derived, not emitted" note already establishes the precedent for the
+three metrics it names explicitly (second listing rate, cohort retention,
+time to second listing) — computed from `listing_published`'s underlying
+facts (`seller_listing_index`, timestamps), not a dedicated event. This
+prompt extends that identical posture to every other §3.2 metric out of
+necessity: there is no PostHog data anywhere in this stack to query, so
+"compute from persisted state" is the only route that exists, not a
+choice made over some available alternative.
+**Revisit:** Yes, once Prompt 22 wires a real, queryable event sink — at
+that point, decide per metric whether the DB computation stays authoritative
+(it's arguably more accurate for anything with a database-native
+definition, e.g. second listing rate) or whether some metrics should shift
+to event-sourced computation. Not a decision to pre-empt now.
+
+### 98. Listing abandonment rate is a DB-derived proxy (the fraction of all `listings` rows stuck at `status = 'draft'`), not the literal `listing_draft_started`-vs-`listing_published` ratio §3.4.1's diagnostic text refers to
+**Why:** neither side of that literal ratio is queryable — `listing_draft_started`
+fires on "listing form first opened," which can happen with zero DB
+footprint at all if the visitor leaves before the first autosave (Decision
+#97's stub-event problem, sharpened here: even once Prompt 22 wires real
+events, a fully-abandoned-before-save visit still leaves no `listings` row
+to join against). The proxy this prompt ships (stuck-draft rows / all rows
+ever created) understates true abandonment for exactly that reason —
+documented as a proxy in the migration's own SQL comment, in
+`get-metrics.ts`, and in the dashboard's own UI copy, not presented as the
+literal figure.
+**Revisit:** Once a real, persisted `listing_draft_started` event exists
+(Prompt 22+), revisit whether the true event-based ratio should replace
+this proxy, or run alongside it as a second, more complete figure.
+
+### 99. Payout latency (§3.2's 8th supporting metric) is shown on the dashboard even though this prompt's own task brief dropped it from its bullet list
+**Why:** the brief's 9-item metrics list swaps "payout latency (median,
+hours)" — a real, named §3.2 metric ("Time from order reaching `released`
+to payout marked paid by admin... above 48 hours consistently means
+automate") — for "listing abandonment rate," which isn't one of §3.2's 8
+formally-named metrics (it's referenced only in §3.4.1's diagnostic
+prose). Given this prompt's own HARD RULE ("do not invent or omit"),
+dropping payout latency to match the brief's list would be exactly the
+omission that rule forbids. Built both: payout latency
+(`metric_payout_latency_hours()`) alongside abandonment rate, not a swap.
+**Revisit:** No.
+
+### 100. Every "within N days" metric restricts its denominator to subjects whose full N-day window has already elapsed — an unbiased-cohort treatment applied uniformly across §3.1/§3.2
+**Why:** without this, a seller/buyer/listing that simply hasn't had time
+yet to reach a within-window outcome would be counted as a same-weight
+"failure" alongside genuine misses, artificially depressing every rate the
+moment fresh activity happens (worse the more actively the platform is
+growing — exactly backwards). Applied consistently: `metric_second_listing_rate()`
+only counts sellers whose first listing is ≥30 days old;
+`metric_listing_to_sale_conversion_by_category()` only counts listings
+published ≥30 days ago; `metric_buyer_repeat_rate_30d()` only counts
+buyers whose first release is ≥30 days old. §3.1's own definition already
+implies this ("of all sellers who publish a first listing in a given
+week... within 30 days" — a completed-week cohort, not a still-running
+one); this prompt applies the identical logic to §3.2's siblings, since
+nothing in their text suggests a different treatment was intended.
+Live-verified: a seller whose first listing is only 5 days old is
+correctly excluded from the second-listing-rate cohort entirely (neither
+counted as a pass nor a miss).
+**Revisit:** No.
+
+### 101. Leakage signal rate is scoped to `moderation_flags.source = 'auto_contact_detect'` only — "admin flagged leakage cases" (the other half of §3.2's own definition) can't be isolated with the current schema
+**Why:** §3.2 defines the count as "listings flagged by the contact detail
+detector at submission, **plus** admin flagged leakage cases." The schema
+has no way to distinguish an admin-sourced flag that was specifically
+about leakage from any other admin-sourced flag (skin-lightening,
+counterfeit, repeat-violation — the full `SUSPEND_LISTING_REASONS` list
+from Prompt 19) — `moderation_flags.source = 'admin'` is one undifferentiated
+bucket. Rather than over-count by treating every admin flag as a leakage
+signal (which would silently inflate the figure with unrelated moderation
+actions), this metric counts only the half of §3.2's definition the schema
+can actually isolate precisely, and the gap is documented (Known Issues),
+not silently absorbed into a wrong number.
+**Revisit:** If a future prompt adds a `moderation_flags.category` or
+similar taxonomy distinguishing flag *types* within the `admin` source
+(a real, useful addition for the moderation queue too, not just this
+metric), extend this function to include those rows.
+
+### 102. `setCategoryFlags` fires `category_enabled` only on the specific `browsable` false→true transition — the category's *current* value is read before the update, never inferred from the caller's input alone
+**Why:** §10 Epic E4 AC4: "`category_enabled` fires on a `browsable` flip
+to **true**" — not on every `browsable` write. A caller could in principle
+pass `browsable: true` on a category that's already browsable (e.g. a
+retried request, or a UI double-click race) — re-firing the event in that
+case would double-count a category enable that never actually happened
+this time. `setCategoryFlags` selects the row's current `browsable` value
+first, computes `isBrowsableFlip = data.browsable === true &&
+category.browsable === false`, and only fires the event when that's true —
+never on a `listable`-only change, never when already `true`, never on a
+flip to `false`. `listing_count_at_flip` is queried fresh at the moment of
+the decision (the live published count the admin was looking at when she
+clicked), not a stale value carried from the page load.
+**Revisit:** No.

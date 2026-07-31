@@ -53,6 +53,21 @@ export const hideReviewInputSchema = z.object({
  * (unlike disputes.detail's 20-1000) — 10 chars is a reasonable floor
  * against a one-word non-answer, not a literal PRD number.
  */
+/**
+ * §10 Epic E4 / §11.2: setCategoryFlags(categoryId, { listable?, browsable? }).
+ * §6.2 HARD RULE: the two flags are independent — both optional here so a
+ * caller can flip just one without touching the other.
+ */
+export const setCategoryFlagsInputSchema = z
+  .object({
+    categoryId: z.string().uuid(),
+    listable: z.boolean().optional(),
+    browsable: z.boolean().optional(),
+  })
+  .refine((v) => v.listable !== undefined || v.browsable !== undefined, {
+    message: "At least one of listable or browsable must be provided.",
+  });
+
 /** §10 Epic E3 AC3: "Mark as paid requires admin_reference." */
 export const markPayoutPaidInputSchema = z.object({
   payoutId: z.string().uuid(),

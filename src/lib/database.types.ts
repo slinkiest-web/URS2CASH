@@ -1307,6 +1307,77 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      metric_buyer_repeat_rate_30d: {
+        Args: never
+        Returns: {
+          buyer_count: number
+          rate_percent: number
+          repeat_count: number
+        }[]
+      }
+      metric_dispute_rate: {
+        Args: never
+        Returns: {
+          disputed_order_count: number
+          paid_order_count: number
+          rate_percent: number
+        }[]
+      }
+      metric_leakage_signal_rate: {
+        Args: never
+        Returns: {
+          leakage_flag_count: number
+          published_listing_count: number
+          rate_percent: number
+        }[]
+      }
+      metric_listing_abandonment_rate: {
+        Args: never
+        Returns: {
+          rate_percent: number
+          stuck_draft_count: number
+          total_listing_count: number
+        }[]
+      }
+      metric_listing_to_sale_conversion_by_category: {
+        Args: never
+        Returns: {
+          category_name: string
+          category_slug: string
+          conversion_rate_percent: number
+          converted_count: number
+          published_count: number
+        }[]
+      }
+      metric_median_time_to_first_sale_by_category: {
+        Args: never
+        Returns: {
+          category_name: string
+          category_slug: string
+          median_days: number
+        }[]
+      }
+      metric_median_time_to_second_listing: { Args: never; Returns: number }
+      metric_payout_latency_hours: { Args: never; Returns: number }
+      metric_second_listing_rate: {
+        Args: never
+        Returns: {
+          cohort_seller_count: number
+          rate_percent: number
+          second_listing_count: number
+        }[]
+      }
+      metric_weekly_seller_cohort_retention: {
+        Args: never
+        Returns: {
+          active_count: number
+          cohort_size: number
+          cohort_week: string
+          retention_rate_percent: number
+          week_offset: number
+          window_end: string
+        }[]
+      }
       raise_dispute: {
         Args: {
           p_buyer_id: string
