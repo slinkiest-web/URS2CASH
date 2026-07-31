@@ -435,6 +435,13 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     that could silently diverge. Close by running `/qa` or `/browse` once
     the tooling is available, or the first time a real non-admin account
     exists to test with by hand.
+    **CLOSED (Prompt 23):** live-verified this session with a genuine
+    signed-in non-admin session (a real cookie value constructed from an
+    actual `signInWithPassword` result, replayed via `fetch()` against a
+    running server) — `/admin` returns `404` for that session, identical
+    to the unauthenticated case, while an ordinary protected route
+    (`/dashboard/listings`) correctly returns `200` for the same session.
+    See `docs/DEFINITION_OF_DONE.md` DoD item 16.
 
 ---
 
@@ -560,3 +567,31 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     #111 — deliberate, not an oversight.
     **Status:** closed by design — revisit only if a future PRD revision
     adds this AC explicitly.
+
+---
+
+## From Prompt 23 (final definition-of-done verification)
+
+49. **Listing-detail page (`/l/[id]`) Lighthouse LCP measured 2.9–3.3s across two runs, over the §13 DoD item 21 target of 2.5s on simulated 3G.**
+    `/c/beauty` passes comfortably (1.9s) on the same measurement setup
+    (real `next start` production build, mobile form factor, a genuinely
+    uploaded photo). The LCP element is the `<h1>` title text, not the
+    photo; Lighthouse's own breakdown attributes the overage almost
+    entirely to "element render delay" (~2.0s) against a fast 307ms TTFB,
+    and no oversized page-specific JS bundle was found on inspection. Real
+    system load average during the run was 3.85–6.48 (local Supabase
+    Docker stack plus this session's own long history), which Lighthouse's
+    `simulate` throttling mode directly scales from — a real environmental
+    confound, not a confirmed app defect. See Decision #119.
+    **Status:** open, flagged — needs re-measurement on an uncontended
+    machine or a real Vercel preview deployment before being treated as a
+    real regression requiring a code fix.
+
+50. **`payout_accounts.profile_id` still has no DB-level UNIQUE constraint** (`docs/TODOS.md` #1), now directly touched by this prompt's new
+    `resolveAndSavePayoutAccount` feature. The app-level "update existing
+    row if present" logic (Decision #118) makes "a seller has at most one
+    payout account" true in practice today, but the real guarantee — a
+    DB constraint — is still missing.
+    **Status:** open — tracked in `docs/TODOS.md` #1 already; this prompt
+    did not fix it (out of scope) but is the first prompt whose own feature
+    depends on the workaround, so it's recorded here too for visibility.

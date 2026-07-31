@@ -32,8 +32,6 @@ export type InitializeTransactionResult =
  * `orders.paystack_reference`, not this function (it has no database
  * access — a pure API client).
  *
- * TODO: `resolve-account` (Epic A3 AC3) belongs here too, once
- * `/api/paystack/resolve-account` is built.
  */
 export async function initializeTransaction(
   input: InitializeTransactionInput
@@ -150,6 +148,46 @@ export async function refundTransaction(input: RefundTransactionInput): Promise<
   }
 
   return { ok: true };
+}
+
+export type ResolveBankAccountResult = { ok: true; accountName: string } | { ok: false; error: string };
+
+/**
+ * PRD §10 Epic A3 AC3: "On entry of a valid bank and account number, the
+ * account name is resolved via Paystack and displayed for confirmation.
+ * AC3 fails if the account name is accepted as user input." Calls
+ * Paystack's real `/bank/resolve` endpoint — the account name in the
+ * response is the ONLY source `resolveAndSavePayoutAccount`
+ * (`src/lib/actions/profile.ts`) is ever allowed to persist; no code path
+ * anywhere accepts a client-supplied account name.
+ */
+export async function resolveBankAccount(bankCode: string, accountNumber: string): Promise<ResolveBankAccountResult> {
+  const secretKey = process.env["PAYSTACK_SECRET_KEY"];
+  if (!secretKey) {
+    return { ok: false, error: "Bank account resolution is not configured." };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `${PAYSTACK_BASE_URL}/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
+      { headers: { Authorization: `Bearer ${secretKey}` } }
+    );
+  } catch {
+    return { ok: false, error: "Could not reach Paystack." };
+  }
+
+  const json = (await response.json().catch(() => null)) as {
+    status?: boolean;
+    message?: string;
+    data?: { account_name?: string };
+  } | null;
+
+  if (!response.ok || !json?.status || !json.data?.account_name) {
+    return { ok: false, error: json?.message || "Could not verify this account. Check the details and try again." };
+  }
+
+  return { ok: true, accountName: json.data.account_name };
 }
 
 export function verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {

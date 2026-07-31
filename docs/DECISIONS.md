@@ -2162,3 +2162,78 @@ phone vs. buyer's full delivery block), and collapsing them into one
 generic shape would either lose that distinction or need the same amount
 of per-call-site conditional logic anyway, just relocated.
 **Revisit:** No.
+
+### 116. The rating-trigger regression fix adds `pg_trigger_depth() <= 1` rather than exempting `recompute_seller_rating` by name
+**Why:** the bug was that `SECURITY DEFINER` elevates table privileges but
+does not null `auth.uid()` (a connection-level GUC, unaffected by
+privilege elevation), so a legitimate cascading UPDATE from a trigger
+fired by the buyer's own session still looked, to
+`prevent_profile_self_service_admin_fields()`, indistinguishable from the
+buyer directly PATCHing her own admin fields. The fix needed to
+distinguish "this UPDATE is the direct, top-level statement a client
+issued" from "this UPDATE is a side effect cascading out of some other
+trigger's own execution" — `pg_trigger_depth() <= 1` is exactly that
+signal, and no client role can fake it (`authenticated`/`anon` cannot
+create triggers on `profiles` at all, so depth cannot be gamed from
+outside the DB). Naming `recompute_seller_rating` specifically (e.g. by
+checking `TG_OP`/some session variable it sets) would have worked for
+today's one known case but silently reopened the exact same bug class the
+moment ANY future trigger cascades into `profiles`' admin-protected
+columns from a non-service-role write path — the depth check protects the
+invariant itself, not today's one instance of it.
+**Revisit:** No — re-audit this trigger's guard if a future migration adds
+another trigger that writes to `profiles` as a side effect of a
+non-service-role write elsewhere, to confirm the depth-1 boundary still
+lands in the right place.
+
+### 117. Payout-account resolution is a single `resolveAndSavePayoutAccount` action, not a two-step "preview then confirm" flow
+**Why:** the PRD's own AC3 names the exact signature
+`resolveAndSavePayoutAccount(bankCode, accountNumber): Result<PayoutAccount>`
+— resolve and persist as one action, not two. A two-step
+preview-then-confirm flow (show the resolved name, require a second
+click to save) was considered and rejected: it would require either
+accepting the resolved `accountName` back from the client on the confirm
+step (reopening exactly the "account name accepted as user input" risk
+AC3 exists to close, since a client-controlled round trip could be
+tampered with even if the UI never exposes an editable field) or
+re-calling Paystack's resolve endpoint a second time on confirm (wasteful
+against Paystack's own test-mode rate limit, discovered live this session
+to be 3 calls/day). One resolve-and-save action, using the account name
+only from that single server-side Paystack response, avoids both.
+**Revisit:** No.
+
+### 118. `resolveAndSavePayoutAccount` updates an existing `payout_accounts` row rather than inserting a new one on every save
+**Why:** there is no DB-level UNIQUE constraint on `payout_accounts.profile_id`
+yet (a separately tracked gap, `docs/TODOS.md` #1, not fixed by this
+prompt since it's out of this prompt's scope) — without app-level
+update-not-insert logic, a seller changing her bank details twice would
+silently accumulate multiple rows, and the profile page's "most recent
+verified row" query (also this prompt) would happen to show the right one
+today but only by accident of ordering, not by any real guarantee. Update-
+if-exists makes "a seller has at most one payout account" actually true in
+practice today, while the real fix (the UNIQUE constraint itself) remains
+tracked separately.
+**Revisit:** Yes — once `docs/TODOS.md` #1 is resolved with a real UNIQUE
+constraint, this update-vs-insert branch becomes belt-and-suspenders
+rather than load-bearing, and the `.order("created_at").limit(1)` query on
+the profile page can be simplified to a plain `.eq(...).maybeSingle()`.
+
+### 119. The Lighthouse listing-detail LCP overage (2.9–3.3s vs the 2.5s target) is reported as a flagged residual risk, not silently marked pass or chased with a speculative code fix
+**Why:** the task's own HARD RULE is "do not mark an item pass without
+actually verifying it" — the honest converse also applies: do not mark an
+item fail-and-fixed on a change unlikely to actually address the measured
+cause. Investigation (LCP element is the H1 text not the photo,
+"element render delay" ~2.0s dominant over an actually-fast 307ms TTFB,
+no oversized page-specific JS bundle on inspection, real system load
+average 3.85–6.48 during the measurement from the local Supabase Docker
+stack plus this session's own long history) points at genuine CPU
+contention on this specific sandboxed machine, which Lighthouse's
+`simulate` throttling mode directly scales from the real observed trace.
+A speculative code change made against a possibly-environmental cause
+risks both wasting effort and masking the real signal when the page is
+eventually measured somewhere uncontended. Reporting it as flagged, with
+the specific evidence for why it's suspected environmental, lets a human
+decide whether to re-measure before treating it as a real defect.
+**Revisit:** Yes — re-run Lighthouse against `/l/[id]` on an uncontended
+machine or a real Vercel preview deployment before this DoD item is
+closed either way.

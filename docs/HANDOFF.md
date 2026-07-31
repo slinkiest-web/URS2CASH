@@ -1284,3 +1284,98 @@ handoff. Walk every DoD item against the real, live codebase (not by
 re-reading old handoff entries) and report what's actually true today.
 
 See `docs/DECISIONS.md` #103–#115 for this prompt's design choices.
+
+---
+
+## Prompt 23 — final definition-of-done verification (build sequence complete)
+
+**Deliverable:** `docs/DEFINITION_OF_DONE.md` — the full pass/fail report
+against every PRD §13 item plus the §12.3/§12.4 deployment gates. Read that
+file for the complete evidence table; this entry covers methodology and
+the two real findings.
+
+**Methodology, not just re-reading old handoff entries:** every item was
+re-verified live this session — a real `supabase db reset`, a real
+`npm run build && next start` production server, real HMAC-signed webhook
+payloads, a real cookie-based non-admin session constructed from a genuine
+`signInWithPassword` result, and a real call to the live Paystack test API
+(not mocked) for the one feature gap found. Two temporary verification
+scripts drove this (`scripts/_verify-dod-tmp.ts` for DB/RLS-level checks,
+`scripts/_verify-dod-http-tmp.ts` for HTTP-level checks) — both deleted
+after use, per this project's standing "verification scripts are temporary,
+not committed" pattern.
+
+**Finding 1 — a real regression, found and fixed.** Prompt 19's
+`prevent_profile_self_service_admin_fields()` trigger blocked ANY
+`profiles` UPDATE carrying a non-null `auth.uid()`, intending to stop a
+seller directly self-granting `is_admin`/etc. But `recompute_seller_rating`
+(Prompt 6, `SECURITY DEFINER`) cascades a `profiles.rating_average` update
+out of a `ratings` INSERT made through the **buyer's own session** (not
+service-role, by design — Decision #76). `SECURITY DEFINER` elevates table
+privileges but does not null `auth.uid()` (a connection-level GUC), so
+every real rating submission since Prompt 19 shipped would have silently
+failed the moment the trigger tried to update the seller's row. Caught live
+by this session's own RLS script, not by inspection. Fixed by adding
+`pg_trigger_depth() <= 1` to the guard — see
+`supabase/migrations/20260804090000_fix_rating_trigger_regression.sql` for
+the full rationale, including the audit confirming no other denormalised-
+counter trigger (`increment_completed_sales_count`,
+`increment_dispute_upheld_count`) shares the bug, since their source tables
+have no authenticated UPDATE policy at all. Re-verified: all 34 RLS-script
+checks pass after the fix, including both the ratings-success path and
+every self-service-lockdown check the original trigger existed for.
+
+**Finding 2 — a real missing feature, found and built.**
+`resolveAndSavePayoutAccount` (PRD §11.2, §10 Epic A3 AC3–AC6) did not
+exist anywhere — a TODO comment and an empty route directory since Prompt
+1. DoD item 1 ("signup → verify → profile → **resolves a bank account** →
+publish") makes this a direct DoD failure, not just a tracked future gap.
+Built this session: `src/lib/paystack/banks.ts` (21 Nigerian banks,
+codes checked live against Paystack's real `/bank` endpoint),
+`resolveBankAccount()` in `src/lib/paystack/index.ts` (real `/bank/resolve`
+call), `resolveAndSavePayoutAccount()` in `src/lib/actions/profile.ts`
+(structurally cannot accept an `accountName` parameter from any caller —
+the persisted name can only come from Paystack's own response, which is
+what makes AC3 impossible to violate rather than just a UI convention),
+and `PayoutAccountForm` (bank select + account-number input only, masked
+display of a saved account, persistent non-blocking prompt when none
+exists). Live-verified against the real Paystack test API — discovered
+along the way that Paystack's test key allows only 3 live bank-resolve
+calls per day before rate-limiting, and that bank code `001` is Paystack's
+own sanctioned unlimited test path (resolves to `"TEST ACCOUNT <number>"`).
+
+**Two items flagged, not silently passed:**
+- DoD item 18 (PostHog event observation) — code proven correct
+  exhaustively; literal dashboard observation unconfirmable without a real
+  API key (issue #44).
+- DoD item 21 (Lighthouse LCP) — `/c/beauty` passes at 1.9s; `/l/[id]`
+  measured 2.9–3.3s across two runs, over the 2.5s target, on a real
+  `next start` production server with a genuinely-uploaded photo. Evidence
+  (load average 3.85–6.48 during the run, LCP dominated by "element render
+  delay" not resource download, no oversized page-specific bundle found on
+  inspection) points to real CPU contention in this sandboxed environment
+  as a confound, not an identified app defect — flagged as needing
+  re-measurement on an uncontended machine or a real Vercel preview before
+  being treated as a confirmed regression.
+
+**Score:** 19 of 21 numbered DoD items (with all lettered sub-items) pass
+cleanly; 2 flagged as above; zero silent passes. Both deployment gates
+(`supabase db reset` from scratch, server-only/env-var split enforced by a
+live build-failure probe, cron routes authenticated) pass.
+
+**Residual human-decision items** (PRD §15, not resolved by this session
+because they cannot be — regulatory and business judgment, not code): most
+notably B11 (Personal Care's prohibited-product list needs review against
+NAFDAC's actual position — named explicitly by this prompt's own task) and
+B10 (Beauty's hygiene-sensitive subcategory list needs Eniola's review to
+override the current assertion). Full list in
+`docs/DEFINITION_OF_DONE.md` §6.
+
+**This is the final prompt of the build sequence.** The application is
+feature-complete against the PRD. What remains is real third-party
+credential configuration for a real deployment, the named regulatory
+reviews, and (optionally) closing the two flagged items with a real
+environment.
+
+See `docs/DECISIONS.md` #116+ for this prompt's specific fix/build
+rationale, and `docs/KNOWN_ISSUES.md` for the closed/updated issue list.
