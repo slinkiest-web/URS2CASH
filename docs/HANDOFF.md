@@ -704,3 +704,171 @@ Committed as `d62ecbd`, pushed to `origin/main`.
 See `docs/DECISIONS.md` #75–#78 for this prompt's design choices.
 
 Committed as `fe65ba4`, pushed to `origin/main`. `docs/PROJECT_STATUS.md` reflects the full state as of this prompt — read it first in a fresh session before starting Prompt 19.
+
+---
+
+## Prompt 19 — Admin moderation surface (Epic E1/E2/E5; E3/E4 deferred)
+
+**Note on scope:** the task brief itself scoped this prompt to admin access
+(E5), the moderation queue (E1), suspend seller/listing-limit-override
+(§5.4/§11.2), `resolveDispute`'s real logic (E2), and `hideReview` — E3
+(payout queue) and E4 (category control) were explicitly out, next prompt.
+Two citation-drift items resolved without blocking (same pattern as
+Decisions #21/#26/#35/#54 before this): "Gadgets auto-flag cases from 6.4"
+doesn't correspond to anything in §6.4.3 — its HARD RULEs are all
+submission-time Zod rejections, not a post-publish flag mechanism (Decision
+#84); "emits `dispute_resolved`" isn't in §3.5's event table — resolution
+fires `order_released`/`order_refunded` instead, the events that already
+exist for these exact transitions (Decision #83).
+
+**Completed:**
+- Migration `supabase/migrations/20260801100000_admin_role_and_moderation.sql`:
+  - `profiles.is_admin boolean not null default false` — the entire admin-role
+    mechanism (§10 Epic E5 AC2), nothing more elaborate (Decision #79).
+  - `listings.suspension_reason`/`suspended_at`/`suspended_by` and
+    `profiles.suspension_reason`/`suspended_at`/`suspended_by` — audit columns
+    so `suspendListing`/`suspendSeller`'s `reason` argument isn't silently
+    discarded; §5.4's own HARD RULE requires the listing reason specifically
+    be retrievable ("remain visible to her with the reason").
+  - **A real, pre-existing security gap found and closed in the same
+    migration, not a new one introduced by it** (Decision #81):
+    `profiles_update_own`/`listings_update_own` (Prompts 2/4) had no
+    column-level protection at all — RLS is row-level, and nothing stopped
+    an authenticated user from directly `PATCH`-ing her own `is_admin`,
+    `is_suspended`, `listing_limit_override`, or (for listings)
+    `status`/the new suspension columns via the client SDK, bypassing every
+    server action. Two new `BEFORE UPDATE` triggers
+    (`prevent_profile_self_service_admin_fields`,
+    `prevent_listing_self_service_suspension`) close this, distinguishing a
+    real user session (`auth.uid() is not null`) from the service role
+    (`auth.uid() is null`, every admin action, always) — same reasoning
+    Decision #28 already established for `recompute_seller_rating`.
+  - `order_status_transitions_actor_role_enum` widened to include `'admin'`
+    — the first admin-driven order transition.
+  - `admin_suspend_listing(listing_id, admin_id, reason)` — atomic: sets the
+    listing suspended with its reason, closes any open `moderation_flags`
+    rows for it (`reviewed_by`/`reviewed_at`, AC5), works whether or not the
+    listing was ever flagged (AC4).
+  - `resolve_dispute_release`/`resolve_dispute_refund(dispute_id, admin_id, notes)`
+    — atomic `disputed -> released`/`disputed -> refunded` transitions,
+    `order_status_transitions`-recorded, `admin_notes`/`resolved_by`/
+    `resolved_at` on the dispute row. The release path duplicates (doesn't
+    call) `release_order`'s payout-creation block, since that function's own
+    `WHERE status = 'delivered'` guard can't fire from `disputed` (Decision
+    #85). The refund path creates no payout row — structurally true with no
+    guard code, since a disputed order can never have held one.
+  - All three new functions: `EXECUTE` revoked from `public`/`anon`/
+    `authenticated`, granted only to `service_role`, same shape as every
+    prior order-transition RPC.
+- `src/lib/admin/require-admin.ts`: `requireAdmin()` — the one reusable
+  check (§11.2 HARD RULE), re-queries `profiles.is_admin` via the
+  service-role client on every call, never trusts the session or the
+  middleware's own decision.
+- `scripts/promote-admin.ts` + `npm run admin:promote -- <email>`: the only
+  way to grant admin, ever (Decision #80) — no server action, no UI, no
+  public route can do this. Requires the service-role key, looks the user
+  up by email, shows who's about to be promoted, requires typing `yes`.
+  README documents running it against a real deployment.
+- `src/lib/actions/admin.ts`: `suspendListing`, `suspendSeller`,
+  `setListingLimitOverride`, `hideReview`, `dismissFlag` — every one calls
+  `requireAdmin()` first, unconditionally. `hideReview`'s DB write touches
+  `is_hidden` only, literally (Decision #87) — the `reason` is validated and
+  logged, never persisted on `ratings`.
+- `src/lib/actions/disputes.ts`: `resolveDispute` — fills Prompt 17's stub.
+  Buyer path calls `refundTransaction()` (new, `src/lib/paystack/index.ts`,
+  a real `/refund` API call, same "build it for real" posture as
+  `initializeTransaction`) **before** touching any DB state — the mirror of
+  `initiateCheckout`'s own provisional-row-then-rollback sequencing
+  (Decision #86). Seller path calls `resolve_dispute_release` and reuses
+  `trackOrderReleased` (the same helper the buyer/cron release path uses).
+- `src/middleware.ts`: `/admin` handling split out from the generic
+  `PROTECTED_PREFIXES` redirect — queries `profiles.is_admin` for the
+  current user (if any) and, on failure, `NextResponse.rewrite()`s to a
+  guaranteed-unmatched path so Next's own not-found boundary renders a
+  genuine 404, indistinguishable from any other broken link (Decision #88).
+  Every other protected prefix still redirects to `/sign-in` as before — the
+  AC1-required *different* failure mode is scoped to `/admin` only.
+- `src/app/admin/`: `layout.tsx` (a second, redundant-by-design
+  `requireAdmin()` check — defense in depth, not the real boundary),
+  `page.tsx` (counts), `moderation/page.tsx` (open flags newest-first +
+  "all recent listings" browse for AC4's "whether or not flagged"),
+  `disputes/page.tsx` + `disputes/[id]/page.tsx` (full order/listing/both
+  parties/evidence + resolve form), `reviews/page.tsx` (hideReview surface),
+  `sellers/page.tsx` (handle-search + suspend/limit-override forms). All
+  Server Components reading via new `src/lib/admin/get-*.ts` query modules
+  (service-role client — every one of these tables is admin-only or has no
+  blanket SELECT policy); small `"use client"` leaf components for the
+  actions themselves, matching every prior prompt's established shape
+  (`mark-shipped-form.tsx` etc.). `robots: noindex` on the layout — "no
+  SEO" per this prompt's brief.
+- `ACTOR_LABELS` in `/orders/[id]/page.tsx` gained `admin: "Admin"` so an
+  admin-resolved dispute's transition renders correctly in a buyer/seller's
+  own order history.
+
+**Verified live, against local Postgres, via a 31-check `tsx` script (not
+just typecheck/lint) before writing this entry:**
+- **Self-service lockdown (the real gap this prompt closed):** an
+  authenticated non-admin session's direct client-side
+  `.update({is_admin: true})`/`.update({is_suspended: true})`/
+  `.update({listing_limit_override: 99999})` on her own profile row all
+  silently no-op; her direct `.update({status: 'published'})` on her own
+  already-suspended listing silently no-ops. An ordinary self-edit (`bio`,
+  or a non-suspended listing's `description`) still succeeds — the trigger
+  is scoped correctly, not a blanket lock.
+- `requireAdmin()`'s underlying query resolves `false` for a non-admin and
+  `true` for a freshly-granted admin.
+- `admin_suspend_listing`: sets `status='suspended'` + the reason, closes an
+  open flag on that listing with `reviewed_by`/`reviewed_at` set.
+- A suspended listing: `anon` client gets `null` (public 404); the owner's
+  own session still reads it, with the reason (§5.4's exact requirement).
+- `resolve_dispute_release`: transitions the order to `released`, creates a
+  payout row for the correct amount referencing the seller's verified
+  account, writes an `order_status_transitions` row with `actor_role='admin'`,
+  and — via the pre-existing Prompt 6 trigger, unmodified — increments
+  `completed_sales_count`.
+- `resolve_dispute_refund`: transitions to `refunded`, creates **no** payout
+  row, and — via the pre-existing trigger — increments
+  `dispute_upheld_count`.
+- Re-resolving an already-resolved dispute is a no-op (empty RPC result),
+  not a double-apply.
+- HTTP-level, against a real `npm run dev` instance: unauthenticated
+  `/admin` and `/admin/moderation` both return a genuine `404` (not a
+  redirect), while `/dashboard/listings` still `307`s to `/sign-in` — the
+  deliberately different failure mode AC1 requires. Confirmed via `diff`
+  that the `/admin` 404 body matches a request to a truly nonexistent path.
+
+**Not live-verified this session (flagged, not silently skipped — Known
+Issue #37):** the signed-in-*non-admin* HTTP path specifically — replicating
+`@supabase/ssr`'s cookie format by hand in `curl` wasn't practical, and
+gstack's `browse` tool was unavailable in this environment (`bun` not
+installed). The code path is shared with the already-live-verified
+unauthenticated branch (one `if (user) { query is_admin }` conditional, not
+a separate implementation), so this is a low-risk gap, not an unverified
+core mechanism.
+
+**Also verified:** `npx tsc --noEmit`, scoped `npx eslint "src/**/*.{ts,tsx}" "scripts/**/*.ts"`, `npx vitest run` (157/157, unchanged — this prompt added no new pure-function modules), `npm run build` all clean (`/admin` + its 5 sub-routes all registered). All test fixtures (4 `auth.users`/`profiles`, listings, orders, disputes, a payout, a moderation flag) cleaned up via a final `supabase db reset`, leaving a clean seeded local DB for the next session.
+
+**Known gaps, flagged rather than silently accepted:**
+- No `unsuspendListing`/`reinstateSeller` exists anywhere — same "absence is
+  deliberate, don't add it" posture §11.2 already states explicitly for
+  `updateRating`/`deleteRating`, but genuinely worth an explicit sign-off
+  before this ships, since a wrongly suspended listing/seller currently has
+  no undo path short of a raw database write. Known Issue #35.
+- `suspendSeller` doesn't cascade to the seller's existing `published`
+  listings — two independent §11.2 actions, no AC ties them together
+  (Decision #82). Known Issue #36.
+- The signed-in-non-admin middleware path (above). Known Issue #37.
+- Admin/moderator email notifications (AC3's seller-suspension email, AC5's
+  both-parties-emailed-on-resolution) are call-site-only, same Prompt-22
+  deferral as every other notification in this codebase.
+
+**Next prompt should build:** the admin payout queue (§10 Epic E3) — lists
+`queued` payouts with seller/masked account/amount/days-since-release,
+flags unblocked-vs-blocked (the `payouts.is_blocked` column Prompt 16
+already built), `markPayoutPaid`/`markPayoutFailed` (both requiring
+`admin_reference`/`failure_note` respectively, both going through
+`requireAdmin()` — the mechanism this prompt built, ready to reuse
+unchanged). Category control (§10 Epic E4) is the only other remaining Epic
+E surface with zero code.
+
+See `docs/DECISIONS.md` #79–#88 for this prompt's design choices.

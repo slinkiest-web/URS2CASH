@@ -32,8 +32,6 @@ export type InitializeTransactionResult =
  * `orders.paystack_reference`, not this function (it has no database
  * access — a pure API client).
  *
- * TODO: `refund` (admin dispute resolution, Epic D5) belongs in this module
- * too, once Epic E's dispute arbitration is built.
  * TODO: `resolve-account` (Epic A3 AC3) belongs here too, once
  * `/api/paystack/resolve-account` is built.
  */
@@ -94,6 +92,66 @@ export async function initializeTransaction(
  * security-sensitive comparison in the codebase (PRD's own framing for this
  * prompt), so it gets the careful version, not `===`.
  */
+export type RefundTransactionInput = {
+  /** `orders.paystack_reference` — the original charge to refund. */
+  reference: string;
+  /** Integer kobo — a full refund of the order amount. */
+  amountKobo: number;
+};
+
+export type RefundTransactionResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * PRD §10 Epic E2 AC3: "Resolve for buyer... triggers the Paystack refund."
+ * Calls Paystack's real `/refund` endpoint — same posture as
+ * `initializeTransaction`: this project builds real external-API
+ * integrations rather than stubs, even where full end-to-end delivery can't
+ * be live-tested in this environment (no tunnel, no live Paystack test
+ * account — same limitation `initializeTransaction` itself carries, see
+ * docs/DECISIONS.md).
+ *
+ * "Accepted" here means Paystack's synchronous response to the refund
+ * *request*, not confirmation the money has actually settled back to the
+ * buyer's card — Paystack refunds are processed asynchronously on their
+ * side. `resolveDispute` (src/lib/actions/admin.ts) treats this success as
+ * sufficient to flip the order to `refunded`, matching how `checkout_started`
+ * already fires on Paystack merely *accepting* the initialize call, not on
+ * completed payment. A dedicated refund webhook would close this gap fully;
+ * out of this prompt's scope, same as the rest of `webhook_events`'
+ * single-event-type limitation today.
+ */
+export async function refundTransaction(input: RefundTransactionInput): Promise<RefundTransactionResult> {
+  const secretKey = process.env["PAYSTACK_SECRET_KEY"];
+  if (!secretKey) {
+    return { ok: false, error: "Payments are not configured." };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${PAYSTACK_BASE_URL}/refund`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        transaction: input.reference,
+        amount: input.amountKobo,
+      }),
+    });
+  } catch {
+    return { ok: false, error: "Could not reach Paystack." };
+  }
+
+  const json = (await response.json().catch(() => null)) as { status?: boolean; message?: string } | null;
+
+  if (!response.ok || !json?.status) {
+    return { ok: false, error: json?.message || "Paystack could not process this refund." };
+  }
+
+  return { ok: true };
+}
+
 export function verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {
   const secretKey = process.env["PAYSTACK_SECRET_KEY"];
   if (!secretKey || !signatureHeader) return false;

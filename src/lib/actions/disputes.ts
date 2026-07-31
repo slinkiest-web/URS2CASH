@@ -5,6 +5,10 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { disputeInputSchema, type DisputeInput } from "@/lib/orders/dispute-schema";
 import { authorizeOrderAction } from "@/lib/orders/authorize-order-action";
 import { DISPUTE_WINDOW_DAYS } from "@/lib/orders/timing-config";
+import { requireAdmin } from "@/lib/admin/require-admin";
+import { resolveDisputeInputSchema } from "@/lib/admin/admin-schemas";
+import { refundTransaction } from "@/lib/paystack";
+import { trackOrderReleased } from "@/lib/orders/order-events";
 import { track } from "@/lib/analytics/events";
 import { ok, err, type Result } from "@/lib/result";
 
@@ -87,22 +91,116 @@ export async function raiseDispute(input: DisputeInput): Promise<Result<{ disput
 }
 
 /**
- * PRD §11.2: resolveDispute(disputeId, outcome, notes): Result<void>. Admin
- * action. Signature-only stub for this prompt — Prompt 19 builds the real
- * admin UI and resolution logic (transition to `released`/`refunded`,
- * payout creation/refund per §10 Epic E2 AC2/AC3, `order_status_transitions`,
- * `dispute_upheld_count` via the Prompt 6 trigger). Deliberately not wired
- * to anything yet: no admin-role verification mechanism exists (Known
- * Issue #12), and building resolution logic ahead of that would have
- * nothing legitimate to gate it.
+ * PRD §11.2: resolveDispute(disputeId, outcome, notes): Result<void>. §10
+ * Epic E2. Admin action — fills the signature-only stub Prompt 17 left,
+ * now that an admin-role mechanism exists (Prompt 19,
+ * src/lib/admin/require-admin.ts).
+ *
+ * AC4: `admin_notes` is required (enforced by `resolveDisputeInputSchema`,
+ * min 10 chars — not "resolvable with an empty string").
+ *
+ * Seller path (AC2): `resolve_dispute_release()` (Prompt 19's migration)
+ * does the `disputed` -> `released` transition and creates the payout row
+ * atomically, in the same shape as `release_order` (Prompt 16) — this is
+ * "creates the payout normally," not a special admin-only payout path.
+ *
+ * Buyer path (AC3): the Paystack refund is called FIRST, and the DB is only
+ * flipped to `refunded` if that call succeeds — the mirror image of
+ * `initiateCheckout`'s own sequencing (create the provisional row, then
+ * call Paystack, then roll back on failure). Getting this order backwards
+ * here would risk telling a buyer "refunded" when no money actually moved.
+ * `resolve_dispute_refund()` creates no payout row at all — provably
+ * correct with zero extra guard code, since a disputed order can never have
+ * held one to begin with (see that function's own comment) — this is the
+ * literal mechanism behind "must not pay the seller," not a check bolted on
+ * afterward.
+ *
+ * No `dispute_resolved` event exists in §3.5's event table (grepped —
+ * zero hits); the resolution instead fires the two PRD-sanctioned events
+ * that already exist for exactly these state transitions, `order_released`
+ * and `order_refunded`, same as every other path that reaches those
+ * states. See docs/DECISIONS.md.
+ *
+ * AC5 (both parties emailed) is a call site only — every other order/rating
+ * lifecycle notification in this codebase is the same shape, deferred to
+ * Prompt 22 (Decision precedent: Prompts 15-18).
  */
-export async function resolveDispute(
-  disputeId: string,
-  outcome: "buyer" | "seller",
-  notes: string
-): Promise<Result<void>> {
-  void disputeId;
-  void outcome;
-  void notes;
-  return err("not_implemented", "Dispute resolution is not yet available.");
+export async function resolveDispute(disputeId: string, outcome: "buyer" | "seller", notes: string): Promise<Result<void>> {
+  const admin = await requireAdmin();
+  if (!admin.ok) {
+    return err(admin.error.code, admin.error.message);
+  }
+
+  const parsed = resolveDisputeInputSchema.safeParse({ disputeId, outcome, notes });
+  if (!parsed.success) {
+    return err("invalid_input", parsed.error.issues[0]?.message ?? "Check the resolution notes.");
+  }
+  const data = parsed.data;
+
+  const service = createServiceClient();
+
+  const { data: dispute } = await service.from("disputes").select("id, order_id, status").eq("id", data.disputeId).maybeSingle();
+  if (!dispute) {
+    return err("not_found", "Dispute not found.");
+  }
+  if (dispute.status !== "open") {
+    return err("invalid_transition", "This dispute has already been resolved.");
+  }
+
+  const { data: order } = await service
+    .from("orders")
+    .select("id, listing_id, status, amount_kobo, paystack_reference")
+    .eq("id", dispute.order_id)
+    .maybeSingle();
+  if (!order || order.status !== "disputed") {
+    return err("invalid_transition", "This order isn't ready to be resolved.");
+  }
+
+  if (data.outcome === "seller") {
+    const { data: transitioned, error } = await service.rpc("resolve_dispute_release", {
+      p_dispute_id: data.disputeId,
+      p_admin_id: admin.data.adminId,
+      p_notes: data.notes,
+    });
+
+    const releasedOrder = transitioned?.[0];
+    if (error || !releasedOrder) {
+      return err("resolution_failed", "Could not resolve this dispute. Try again.");
+    }
+
+    await trackOrderReleased(service, releasedOrder);
+    return ok(undefined);
+  }
+
+  // Buyer path: refund via Paystack BEFORE touching any DB state.
+  if (!order.paystack_reference) {
+    return err("resolution_failed", "This order has no payment reference to refund.");
+  }
+
+  const refund = await refundTransaction({ reference: order.paystack_reference, amountKobo: order.amount_kobo });
+  if (!refund.ok) {
+    return err("refund_failed", refund.error);
+  }
+
+  const { data: refundedTransitioned, error: refundDbError } = await service.rpc("resolve_dispute_refund", {
+    p_dispute_id: data.disputeId,
+    p_admin_id: admin.data.adminId,
+    p_notes: data.notes,
+  });
+
+  const refundedOrder = refundedTransitioned?.[0];
+  if (refundDbError || !refundedOrder) {
+    // The Paystack refund already succeeded but the DB transition failed —
+    // logged for manual reconciliation rather than silently swallowed; the
+    // buyer's money is genuinely on its way back regardless of this error.
+    console.error("[resolveDispute] Paystack refund succeeded but DB transition failed", {
+      disputeId: data.disputeId,
+      orderId: order.id,
+      error: refundDbError,
+    });
+    return err("resolution_failed", "The refund was processed but the order could not be updated. Contact engineering.");
+  }
+
+  track("order_refunded", { order_id: order.id, refund_reason: data.notes });
+  return ok(undefined);
 }

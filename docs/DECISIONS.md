@@ -1470,3 +1470,224 @@ unrated order gets exactly one reminder and the column stamped; a second
 run finds nothing left to do; a separately-seeded eligible-but-already-
 rated order is correctly excluded and never stamped.
 **Revisit:** No.
+
+---
+
+## From Prompt 19
+
+### 79. Admin role: a single `profiles.is_admin boolean`, checked fresh from the database by `requireAdmin()` on every admin server action
+**Why:** §10 Epic E5 AC2's HARD RULE is explicit: "a database column, never
+an env var list of emails." `profiles` already carries `is_suspended` in
+exactly this shape (Prompt 2), so `is_admin` is the same pattern, same
+table, not a new `admin_users` table — there is nothing about "is this
+profile an admin" that needs its own row, join, or audit trail beyond what
+a boolean already gives (unlike suspension, no reason/actor needs
+recording for granting admin — see Decision #80 on why that's true).
+`src/lib/admin/require-admin.ts`'s `requireAdmin()` is the one reusable
+check every admin server action calls first, unconditionally, via the
+service-role client — never trusting the session, a cached claim, or
+whatever the middleware already decided (§11.2 HARD RULE: "middleware
+protection is not sufficient"). Live-verified: a non-admin session's own
+`profiles.is_admin` correctly resolves `false`; the same query for a
+just-granted admin correctly resolves `true` on the very next call, no
+token refresh needed (the whole point of re-querying instead of trusting
+a JWT claim).
+**Revisit:** No, unless a future prompt needs graduated admin roles
+(e.g. "moderator" vs "full admin") — that would be a deliberate schema
+change (an enum/text column instead of a boolean), not a fix to this one.
+
+### 80. First-admin bootstrap is `scripts/promote-admin.ts`, run manually with the service-role key — never a migration, never a server action, never a public route
+**Why:** two options were considered and rejected. A seeded migration
+(`UPDATE profiles SET is_admin = true WHERE ...`) would either hardcode a
+real email into a file committed to git (a credential-adjacent leak, and
+the literal thing §10 Epic E5 AC2 forbids in spirit even if not in the
+literal column sense) or fail silently in every environment where that
+user hasn't signed up yet (a fresh `db reset` runs seed.sql before any
+`auth.users` row could exist). A server action was rejected outright: any
+action that grants admin needs its own caller to already be verified as
+admin, which is exactly the bootstrap problem — the very first admin has,
+by definition, no existing admin to grant them access. The script sidesteps
+both: it requires the service-role key (already the highest-trust secret
+in this codebase, per `server.ts`'s own `server-only` guard), looks up the
+target by email via `auth.admin.listUsers()` (paginated — supabase-js has
+no `getUserByEmail`), shows exactly who's about to be promoted, and
+requires typing `yes` before writing anything. Confirmed the "is_admin
+already true" case short-circuits with no prompt (idempotent, safe to
+re-run). README documents running it against a real deployment via
+`vercel env pull` first — never wiring the service-role key into a request
+handler to make this "self-service."
+**Revisit:** No.
+
+### 81. Real gap found and closed: `profiles_update_own`/`listings_update_own` had no column-level protection — a BEFORE UPDATE trigger, not a narrower RLS policy, closes it
+**Why:** RLS is row-level, not column-level (the same limitation Decision
+#1/#24 already worked around for SELECT, via dedicated `_public` views).
+There is no equivalent view-based escape hatch for UPDATE — the established
+pattern in this schema for column-level UPDATE protection is a trigger
+comparing OLD/NEW (`prevent_published_listing_core_field_changes`, Prompt
+4). Before this migration, nothing stopped an authenticated user from
+directly `PATCH`-ing their own `is_suspended`, `listing_limit_override`,
+`rating_average`, `completed_sales_count`, or (as of this migration)
+`is_admin` via the client SDK, entirely bypassing every server action.
+This wasn't previously flagged because no admin-settable column existed to
+make the gap concrete — closing it in the same migration that introduces
+the first one, rather than shipping `is_admin` onto a table that already
+can't protect it. Same shape applied to `listings.status <-> 'suspended'`
+plus the three suspension audit columns, so a suspended listing's owner
+cannot self-unsuspend by directly updating `status` back to `published`.
+Both triggers distinguish "the row owner's own authenticated session" from
+"the service role" via `auth.uid() is not null` — a real user JWT sets it,
+the service-role key (every admin action, always) doesn't, matching the
+same reasoning Decision #28 already established for
+`recompute_seller_rating`'s `SECURITY DEFINER` boundary. Live-verified,
+not just reasoned about: an authenticated attacker session's direct
+`.update({is_admin: true})`/`.update({is_suspended: true})`/
+`.update({listing_limit_override: 99999})` on her own profile row all
+silently no-op (still `false`/`false`/`null` after), her direct
+`.update({status: 'published'})` on her own already-suspended listing
+silently no-ops (still `suspended` after), while an ordinary self-edit
+(`bio`, or an unsuspended listing's `description`) still succeeds —
+confirming the trigger is scoped to exactly the protected columns, not a
+blanket "owner can never update this row again."
+**Revisit:** Yes, if a future prompt adds another admin-only or
+trigger-maintained column to `profiles` or `listings` — extend the
+existing trigger function's condition list, don't write a third one.
+
+### 82. `suspendSeller` does not cascade to the seller's own listings
+**Why:** §11.2's action list has `suspendListing` and `suspendSeller` as
+two independent actions, and no AC anywhere ties them together — the
+closest text (§5.4: "a suspended seller's listings return 404 publicly and
+remain visible to her with the reason") is, read in context, describing
+per-*listing* suspension, not a cascading account-level effect (see
+`docs/KNOWN_ISSUES.md` #36's fuller reasoning). Same "don't add an
+unrequested restriction" posture as Decision #38 (`removeListing`'s lack of
+a status guard). The seller's public profile still disappears for free —
+`profiles_public` (Decision #1) already filters `where is_suspended =
+false` — but her existing `published` listings stay purchasable until an
+admin separately suspends each one, or a future prompt deliberately builds
+cascading suspension.
+**Revisit:** Flag for explicit product sign-off before this matters in
+practice — "suspend this seller" reading as "and nothing she's already
+listed changes" is a genuine surprise risk for whoever operates this
+queue, even though it's the literal, unrequested-restriction-free reading
+of the spec.
+
+### 83. No `dispute_resolved` event — `resolveDispute` fires `order_released`/`order_refunded`, the two PRD-sanctioned events that already exist for these exact transitions
+**Why:** this prompt's own task brief said "Emits `dispute_resolved`."
+Grepped §3.5's full event table — zero hits for that name, anywhere. Same
+shape as Decision #26 (`seller_listing_ordinal` rejected, no dual-naming
+scheme exists) — §3.5's own HARD RULE is "every event below is emitted...
+there is no separate analytics implementation task," which reads as an
+exhaustive list, not a floor. `order_released` ("Order reaches released")
+and `order_refunded` ("Refund completed") already exist and already
+describe exactly what happens on each path of a dispute resolution,
+regardless of which actor (buyer, cron, or now admin) got the order there
+— firing them here, via the same `trackOrderReleased` helper the buyer/cron
+release path already uses (for `order_released`) and a direct `track()`
+call carrying `refund_reason: notes` (for `order_refunded`), is more
+consistent with the rest of this codebase's event model than inventing a
+new admin-specific event would have been.
+**Revisit:** No, unless the PRD is amended to add `dispute_resolved`
+explicitly with its own property list — at which point build exactly that,
+not a guess at its shape.
+
+### 84. No distinct "Gadgets auto-flag" mechanism exists or was built — the task brief's citation doesn't match anything in §6.4.3
+**Why:** the task asked the moderation queue to prioritise "the Gadgets
+auto-flag cases from 6.4." Re-read §6.4.3 in full looking for anything
+resembling a flag-not-block mechanism specific to Gadgets: every one of its
+HARD RULEs (`functional_status` must be `fully_functional`,
+`icloud_or_frp_locked` must be `false`, `screen_condition: cracked` "blocks
+publish") is a hard *submission-time* rejection enforced by the category's
+Zod schema (Prompt 3) — the listing never gets created, so it can never
+reach a post-publish moderation queue at all. That's a structurally
+different mechanism from §9.3's contact detector (flags, never blocks,
+after a successful publish), and nothing in §6.4.3 describes a third,
+distinct auto-flag behavior for Gadgets specifically. Same citation-drift
+pattern this project has hit before (Decisions #21, #26, #35, #54) —
+resolved by building nothing extra: a Gadgets listing that trips the
+generic contact detector gets exactly the same treatment as any other
+category's, via the identical `moderation_flags` newest-first queue
+(Decision #40's mechanism, unchanged).
+**Revisit:** Only if a future PRD revision actually defines a Gadgets-
+specific auto-flag rule with its own trigger condition — re-read this
+decision against that text at that point.
+
+### 85. `resolve_dispute_release`/`resolve_dispute_refund` are two separate SQL functions, not a parameterised reuse of `release_order`
+**Why:** `release_order()` (Prompt 16)'s own `WHERE` clause requires
+`status = 'delivered'` — a disputed order is never `delivered` again, it
+goes `disputed -> released` directly per §8.1's state diagram, so
+`release_order()` cannot be called unchanged for this path. Duplicating its
+payout-creation block (verified-account lookup, `is_blocked` computation)
+into a new function with its own `WHERE status = 'disputed'` guard keeps
+each function's precondition obviously correct at a glance, matching how
+`expire_pending_order`/`auto_advance_shipped_to_delivered` already stay
+separate from `release_order` rather than being merged into one
+heavily-parameterised transition function. The refund path
+(`resolve_dispute_refund`) creates no payout row via the absence of any
+insert into `payouts` — provably correct with zero guard code, since a
+disputed order can never have held a payout row to begin with (raise_dispute
+only ever fires on `paid`/`shipped`/`delivered`, all strictly before
+`release_order`'s own `delivered`-only payout-creation moment).
+**Revisit:** No.
+
+### 86. `resolveDispute`'s buyer path calls the Paystack refund API before flipping any database state, the mirror image of `initiateCheckout`'s own sequencing
+**Why:** getting this order backwards would let an admin's click alone mark
+an order `refunded` in the database while no money had actually moved —
+the exact class of bug this project already avoided once (Decision #55:
+`initiateCheckout` deletes its provisional `pending` row if Paystack's
+`initialize` call fails, rather than leaving a `pending` order for a
+payment that was never actually attempted). `refundTransaction()`
+(`src/lib/paystack/index.ts`) is called first; only on success does
+`resolve_dispute_refund()` run. If the RPC itself then fails after a
+successful refund call (a genuine edge case — the refund already happened,
+the DB didn't catch up), the error is logged for manual reconciliation
+rather than silently swallowed or retried automatically, since silently
+retrying a refund call risks a duplicate refund. "Accepted" here means
+Paystack's synchronous acknowledgement of the refund *request*, not
+settlement confirmation — same asymmetry `initializeTransaction` already
+has (Decision from Prompt 13/14; a real refund webhook would close this
+fully and is out of this prompt's scope, same limitation as the rest of
+`webhook_events`' single-event-type reach today).
+**Revisit:** Yes, when a Paystack refund webhook is eventually built —
+revisit whether this synchronous "request accepted" gate should defer to
+webhook confirmation instead, the same closure `mark_order_paid`'s webhook
+already gives the payment side.
+
+### 87. `hideReview`'s `reason` argument is validated and logged, never persisted on `ratings`
+**Why:** §11.2's HARD RULE is unusually specific: "`hideReview` sets
+`is_hidden` only. It has no path to `score`, `rating_average`, or
+`rating_count`." Read literally — "is_hidden only" — rather than as
+shorthand for "don't touch the trust-metric columns specifically." Adding
+a `hidden_reason`/`hidden_by`/`hidden_at` column set (the shape this
+project used for `listings.suspension_reason`, Decision from this same
+prompt) would technically still satisfy the narrower reading but not the
+literal one, and nothing in Epic E1-E4's ACs asks a hidden review's reason
+be shown anywhere — unlike `listings.suspension_reason`, which §5.4's own
+HARD RULE requires be retrievable ("remain visible to her with the
+reason"). The `UPDATE` in `src/lib/actions/admin.ts`'s `hideReview` touches
+exactly one column; the reason is `console.log`'d for operator visibility
+only, matching §11.3's "internal detail is logged, never returned"
+convention already established for error handling.
+**Revisit:** If a future prompt's brief explicitly asks for a
+seller-visible or admin-queue-visible hide reason, that's a deliberate
+scope addition needing its own column (following `listings.suspension_reason`'s
+shape) — not a sign this reading was wrong.
+
+### 88. `/admin` route-cloaking in middleware: rewrite to a guaranteed-unmatched path, not a bare `new NextResponse(null, {status: 404})`
+**Why:** §10 Epic E5 AC1 requires a non-admin's response be genuinely
+indistinguishable from hitting a random broken link — a bare synthetic 404
+response, with no body, would be trivially distinguishable from the app's
+real not-found page (no styling, no matching headers, nothing) if anyone
+ever compared the two. `NextResponse.rewrite(new URL("/__admin_route_not_found__", request.url))`
+makes Next's own app router resolve that (guaranteed-unmatched) path
+exactly the way it resolves any other nonexistent URL on the site —
+through the same not-found boundary, same status code, same rendered
+output — with zero new files needed (no dedicated "admin 404" page to
+maintain and keep in sync with the real one). Session cookies from the
+`getUser()` call earlier in the middleware are still forwarded onto the
+rewritten response, so a signed-in non-admin's token refresh isn't lost
+just because she hit a route she can't access. Live-verified: an
+unauthenticated request to `/admin` and `/admin/moderation` both return
+`404`, while every other protected prefix (`/dashboard/listings`) still
+`307`s to `/sign-in` — the deliberately different failure mode the AC
+calls for.
+**Revisit:** No.

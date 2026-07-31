@@ -100,6 +100,19 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npx supabase migration new <name>` | Create a new migration file |
 | `npx supabase db push` | Apply pending migrations locally |
 | `npx supabase gen types typescript --local > src/lib/database.types.ts` | Regenerate database types |
+| `npm run admin:promote -- <email>` | Grant `/admin` access to an existing user. The only way to create an admin — see below. |
+
+---
+
+## Granting admin access
+
+`/admin` (§10 Epic E) has no signup flow, no invite link, and no server action that can grant admin — the role is a plain `profiles.is_admin` boolean column (PRD §10 Epic E5 AC2: "never an env var list of emails"), and the only thing that can set it is `scripts/promote-admin.ts`, run manually with the service-role key:
+
+```bash
+npm run admin:promote -- someone@example.com
+```
+
+The target user must already have completed signup (a `profiles` row must exist). The script looks them up, shows who you're about to promote, and requires typing `yes` to confirm before writing anything. It reads `NEXT_PUBLIC_SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` from `.env.local` locally; to grant admin against a real deployment, pull that environment's secrets first (e.g. `vercel env pull`) and run the script against them — never wire this into a request handler, and never commit a service-role key anywhere.
 
 ---
 

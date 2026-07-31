@@ -25,6 +25,7 @@ const ACTOR_LABELS: Record<string, string> = {
   buyer: "Buyer",
   seller: "Seller",
   system: "System",
+  admin: "Admin",
 };
 
 /**

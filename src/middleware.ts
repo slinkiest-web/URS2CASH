@@ -3,18 +3,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
 
 /**
- * PRD §4 / Epic E5: /sell, /dashboard, /orders, /admin require a session.
- *
- * HARD RULE (Epic E5 AC1): middleware protection is NOT sufficient on its
- * own for /admin — non-admins must get 404, not a redirect. That role check
- * requires an admin claim on profiles, which does not exist yet (§15.5 B22:
- * "mechanism decided in Phase 3's first migration"). Until that migration
- * lands, /admin only enforces "is signed in" here, same as the other
- * protected prefixes; the real admin-role check is re-verified in every
- * admin server action once it exists (§11.2: "every admin action re-verifies
- * admin role from the database").
+ * PRD §4: /sell, /dashboard, /orders require a session (redirect to sign-in
+ * on failure). /admin is handled separately below — Epic E5 AC1 requires a
+ * materially different failure mode (a 404 that discloses nothing, never a
+ * sign-in redirect, which would itself disclose that a protected route
+ * exists at that path).
  */
-const PROTECTED_PREFIXES = ["/sell", "/dashboard", "/orders", "/admin"];
+const PROTECTED_PREFIXES = ["/sell", "/dashboard", "/orders"];
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -47,6 +42,36 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // PRD §10 Epic E5 AC1: "/admin is protected by a role check in
+  // middleware. Non admins get 404, not 403. AC1 fails if the route's
+  // existence is disclosed." A signed-out visitor and a signed-in
+  // non-admin get the exact same response — never a sign-in redirect,
+  // which would itself leak that /admin requires authorization. This is
+  // the route-cloaking layer only; the actual security boundary is every
+  // admin server action re-verifying `profiles.is_admin` from the database
+  // independently (§11.2 HARD RULE — requireAdmin(), never trusting this
+  // check or anything cached on the session).
+  if (request.nextUrl.pathname.startsWith("/admin")) {
+    let isAdmin = false;
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).maybeSingle();
+      isAdmin = profile?.is_admin === true;
+    }
+
+    if (!isAdmin) {
+      // Rewriting to a path with no matching route makes Next's app router
+      // render its own not-found boundary with a genuine 404 status — the
+      // same response a request for any other nonexistent URL on this site
+      // gets, so a non-admin visiting /admin/anything is indistinguishable
+      // from a typo.
+      const notFoundResponse = NextResponse.rewrite(new URL("/__admin_route_not_found__", request.url));
+      supabaseResponse.cookies.getAll().forEach((cookie) => notFoundResponse.cookies.set(cookie.name, cookie.value));
+      return notFoundResponse;
+    }
+
+    return supabaseResponse;
+  }
 
   const isProtected = PROTECTED_PREFIXES.some((prefix) =>
     request.nextUrl.pathname.startsWith(prefix)

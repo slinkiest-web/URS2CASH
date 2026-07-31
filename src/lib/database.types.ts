@@ -172,6 +172,9 @@ export type Database = {
           seller_id: string
           seller_listing_index: number
           status: string
+          suspended_at: string | null
+          suspended_by: string | null
+          suspension_reason: string | null
           title: string
           updated_at: string
         }
@@ -191,6 +194,9 @@ export type Database = {
           seller_id: string
           seller_listing_index: number
           status?: string
+          suspended_at?: string | null
+          suspended_by?: string | null
+          suspension_reason?: string | null
           title: string
           updated_at?: string
         }
@@ -210,6 +216,9 @@ export type Database = {
           seller_id?: string
           seller_listing_index?: number
           status?: string
+          suspended_at?: string | null
+          suspended_by?: string | null
+          suspension_reason?: string | null
           title?: string
           updated_at?: string
         }
@@ -231,6 +240,20 @@ export type Database = {
           {
             foreignKeyName: "listings_seller_id_fkey"
             columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listings_suspended_by_fkey"
+            columns: ["suspended_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "listings_suspended_by_fkey"
+            columns: ["suspended_by"]
             isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
@@ -627,12 +650,16 @@ export type Database = {
           dispute_upheld_count: number
           handle: string
           id: string
+          is_admin: boolean
           is_suspended: boolean
           listing_limit_override: number | null
           phone: string | null
           rating_average: number | null
           rating_count: number
           state: string | null
+          suspended_at: string | null
+          suspended_by: string | null
+          suspension_reason: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -643,12 +670,16 @@ export type Database = {
           dispute_upheld_count?: number
           handle: string
           id: string
+          is_admin?: boolean
           is_suspended?: boolean
           listing_limit_override?: number | null
           phone?: string | null
           rating_average?: number | null
           rating_count?: number
           state?: string | null
+          suspended_at?: string | null
+          suspended_by?: string | null
+          suspension_reason?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -659,14 +690,33 @@ export type Database = {
           dispute_upheld_count?: number
           handle?: string
           id?: string
+          is_admin?: boolean
           is_suspended?: boolean
           listing_limit_override?: number | null
           phone?: string | null
           rating_average?: number | null
           rating_count?: number
           state?: string | null
+          suspended_at?: string | null
+          suspended_by?: string | null
+          suspension_reason?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_suspended_by_fkey"
+            columns: ["suspended_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_suspended_by_fkey"
+            columns: ["suspended_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ratings: {
         Row: {
@@ -1004,6 +1054,37 @@ export type Database = {
       }
     }
     Functions: {
+      admin_suspend_listing: {
+        Args: { p_admin_id: string; p_listing_id: string; p_reason: string }
+        Returns: {
+          attribute_schema_version: number
+          attributes: Json
+          category_id: string
+          condition: string
+          condition_notes: string | null
+          created_at: string
+          description: string
+          flaw_photo_indexes: number[]
+          id: string
+          photo_urls: string[]
+          price_kobo: number
+          published_at: string | null
+          seller_id: string
+          seller_listing_index: number
+          status: string
+          suspended_at: string | null
+          suspended_by: string | null
+          suspension_reason: string | null
+          title: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "listings"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       auto_advance_shipped_to_delivered: {
         Args: { p_order_id: string }
         Returns: {
@@ -1243,6 +1324,74 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      resolve_dispute_refund: {
+        Args: { p_admin_id: string; p_dispute_id: string; p_notes: string }
+        Returns: {
+          amount_kobo: number
+          auto_release_at: string | null
+          buyer_id: string
+          commission_kobo: number
+          created_at: string
+          delivered_at: string | null
+          delivery_address: string
+          delivery_name: string
+          delivery_phone: string
+          delivery_state: string
+          disputed_at: string | null
+          id: string
+          listing_id: string
+          paid_at: string | null
+          paystack_reference: string | null
+          rating_reminder_sent_at: string | null
+          refunded_at: string | null
+          released_at: string | null
+          seller_id: string
+          seller_payout_kobo: number
+          shipped_at: string | null
+          status: string
+          tracking_note: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      resolve_dispute_release: {
+        Args: { p_admin_id: string; p_dispute_id: string; p_notes: string }
+        Returns: {
+          amount_kobo: number
+          auto_release_at: string | null
+          buyer_id: string
+          commission_kobo: number
+          created_at: string
+          delivered_at: string | null
+          delivery_address: string
+          delivery_name: string
+          delivery_phone: string
+          delivery_state: string
+          disputed_at: string | null
+          id: string
+          listing_id: string
+          paid_at: string | null
+          paystack_reference: string | null
+          rating_reminder_sent_at: string | null
+          refunded_at: string | null
+          released_at: string | null
+          seller_id: string
+          seller_payout_kobo: number
+          shipped_at: string | null
+          status: string
+          tracking_note: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       search_listings: {
         Args: {
           result_limit?: number
@@ -1265,6 +1414,9 @@ export type Database = {
           seller_id: string
           seller_listing_index: number
           status: string
+          suspended_at: string | null
+          suspended_by: string | null
+          suspension_reason: string | null
           title: string
           updated_at: string
         }[]

@@ -103,9 +103,10 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     user is admin" helper exists in code. This currently affects `categories`
     and `listings` (this prompt) and will affect `orders`, `disputes`,
     `payouts`, and `moderation_flags` (next prompt) identically.
-    **Status:** open. Must be closed when Epic E (Admin) is built — the
-    admin claim/column and a reusable admin-check helper need to land
-    *before* any admin server action is written, not after.
+    **Status:** resolved, Prompt 19. `profiles.is_admin` is the admin claim/
+    column; `src/lib/admin/require-admin.ts`'s `requireAdmin()` is the
+    reusable helper, called first by every admin server action. See
+    Decisions #79–#81.
 
 ## From Prompt 5
 
@@ -388,5 +389,49 @@ prompt that introduced them; when something is fixed, mark it **RESOLVED
     `released`/`refunded`, payout creation/refund, `dispute_upheld_count`)
     ahead of an admin-role mechanism would have nothing legitimate to gate
     it.
-    **Status:** open — not new, but now also a direct blocker for Prompt
-    19, not just a general Epic E prerequisite.
+    **Status:** resolved, Prompt 19. `resolveDispute` now has real logic
+    (`src/lib/actions/disputes.ts`), gated by `requireAdmin()`.
+
+---
+
+## From Prompt 19
+
+35. **No `unsuspendListing`/`reinstateSeller` action exists anywhere — a suspension is currently permanent.**
+    §11.2's admin action list has `suspendListing`/`suspendSeller` and no
+    reverse. Same posture this codebase already takes deliberately for
+    `updateRating`/`deleteRating` (§11.2 HARD RULE: "their absence is
+    deliberate and an agent must not add them") — not built here because
+    nothing asked for it, not because it was overlooked. A real gap for
+    day-two admin operations (a wrongly suspended listing/seller has no undo
+    path short of a direct database write) but out of this prompt's asked
+    scope.
+    **Status:** open — flag for explicit sign-off before Epic E ships to
+    production, not a silent gap. If confirmed intentional, this note can be
+    closed as "by design."
+
+36. **`suspendSeller` does not cascade to the seller's existing listings.**
+    Suspending an account hides the seller's public profile (`profiles_public`
+    already filters `is_suspended = false`, Decision #1) but her already-
+    published listings stay `published` and fully purchasable — `suspendListing`
+    and `suspendSeller` are two independent §11.2 actions, and no AC ties
+    them together. See Decision #82 for the full reasoning.
+    **Status:** open — deliberate scope boundary, not an oversight; revisit
+    if a future prompt's brief asks for cascading suspension explicitly.
+
+37. **The `/admin` middleware role-cloaking (§10 Epic E5 AC1) was live-verified only for the unauthenticated case, not a signed-in non-admin.**
+    Verified live: an unauthenticated request to `/admin`/`/admin/moderation`
+    returns a genuine `404` (not a redirect, unlike every other protected
+    prefix) with a body indistinguishable from a truly nonexistent route.
+    The signed-in-non-admin branch shares the identical `profiles.is_admin`
+    query — already live-verified 31 times over in the DB-level test suite
+    this prompt ran (self-service lockdown, RPC behavior) — but the actual
+    HTTP round trip for a signed-in non-admin hitting `/admin` was not
+    curl/browser-tested this session, since replicating `@supabase/ssr`'s
+    cookie format by hand in curl is impractical and gstack's `browse` tool
+    was unavailable in this environment (`bun` not installed, no other
+    browser automation on hand).
+    **Status:** open, low risk — the code path is shared and simple (one
+    `if (user) { query is_admin }` branch), not a distinct implementation
+    that could silently diverge. Close by running `/qa` or `/browse` once
+    the tooling is available, or the first time a real non-admin account
+    exists to test with by hand.

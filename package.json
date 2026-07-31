@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "admin:promote": "tsx scripts/promote-admin.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -40,6 +41,7 @@
     "prettier": "^3.5.3",
     "supabase": "^2.26.9",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5",
     "vitest": "^3.2.7"
   },
