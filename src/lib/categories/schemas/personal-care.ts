@@ -14,7 +14,7 @@ export const SCHEMA_VERSION = 1;
 
 export const PERSONAL_CARE_SLUG = "personal_care" as const;
 export const PERSONAL_CARE_ALLOWED_CONDITIONS = ["brand_new", "opened_unused"] as const;
-export const PERSONAL_CARE_MIN_PHOTOS = 3;
+export const PERSONAL_CARE_MIN_PHOTOS = 1;
 /** PRD §6.3: `used` is disallowed outright — no usage indicator set applies. */
 export const PERSONAL_CARE_USAGE_INDICATOR_FIELDS = [] as const;
 

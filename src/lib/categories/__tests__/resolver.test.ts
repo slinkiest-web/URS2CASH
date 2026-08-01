@@ -21,12 +21,12 @@ describe("category registry (PRD §6.4/§6.5)", () => {
     expect(categoryRegistry.home_goods.browsable).toBe(false);
   });
 
-  it("sources photo minimums from PRD §6.4", () => {
-    expect(categoryRegistry.beauty.minPhotos).toBe(3);
-    expect(categoryRegistry.fashion.minPhotos).toBe(4);
-    expect(categoryRegistry.gadgets.minPhotos).toBe(5);
-    expect(categoryRegistry.personal_care.minPhotos).toBe(3);
-    expect(categoryRegistry.home_goods.minPhotos).toBe(4);
+  it("requires only 1 photo minimum per category — deliberately relaxed below PRD §6.4's original 3-5 range for everyday-seller UX", () => {
+    expect(categoryRegistry.beauty.minPhotos).toBe(1);
+    expect(categoryRegistry.fashion.minPhotos).toBe(1);
+    expect(categoryRegistry.gadgets.minPhotos).toBe(1);
+    expect(categoryRegistry.personal_care.minPhotos).toBe(1);
+    expect(categoryRegistry.home_goods.minPhotos).toBe(1);
   });
 
   it("excludes used from personal_care's allowed conditions", () => {

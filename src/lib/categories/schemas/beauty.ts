@@ -8,7 +8,7 @@ export const SCHEMA_VERSION = 1;
 
 export const BEAUTY_SLUG = "beauty" as const;
 export const BEAUTY_ALLOWED_CONDITIONS = ALL_CONDITIONS;
-export const BEAUTY_MIN_PHOTOS = 3;
+export const BEAUTY_MIN_PHOTOS = 1;
 /** PRD §6.3's usage indicator set for this category — UI reveal-on-`used`, not a validation source. */
 export const BEAUTY_USAGE_INDICATOR_FIELDS = ["fill_level_percent"] as const;
 
@@ -82,36 +82,17 @@ export const beautyAttributesSchema = beautyBaseSchema.superRefine((data, ctx) =
     });
   }
 
-  // §6.4.1 HARD RULE: fill_level_percent, pao_months, and opened_at_date are
-  // required unless condition is brand_new — broader than "used" alone.
-  if (data.condition !== "brand_new") {
-    if (data.fill_level_percent === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["fill_level_percent"],
-        message: "fill_level_percent is required unless condition is brand_new (PRD §6.4.1).",
-      });
-    }
-    if (data.pao_months === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["pao_months"],
-        message: "pao_months is required unless condition is brand_new (PRD §6.4.1).",
-      });
-    }
-    if (data.opened_at_date === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["opened_at_date"],
-        message: "opened_at_date is required unless condition is brand_new (PRD §6.4.1).",
-      });
-    } else if (!isPastDate(data.opened_at_date)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["opened_at_date"],
-        message: "opened_at_date must be in the past (PRD §6.4.1).",
-      });
-    }
+  // fill_level_percent/pao_months/opened_at_date used to be required unless
+  // condition was brand_new (PRD §6.4.1) — deliberately relaxed to always
+  // optional, a real everyday-seller UX barrier for a market where a used
+  // item's exact PAO/opened date is often genuinely unknown. Still validated
+  // when supplied: opened_at_date must be a real past date.
+  if (data.opened_at_date !== undefined && !isPastDate(data.opened_at_date)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["opened_at_date"],
+      message: "opened_at_date must be in the past (PRD §6.4.1).",
+    });
   }
 });
 

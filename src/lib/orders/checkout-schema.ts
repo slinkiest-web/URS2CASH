@@ -9,7 +9,7 @@
  * other address component. Four fields here, not five.
  */
 import { z } from "zod";
-import { nigerianStateSchema, e164PhoneSchema } from "@/lib/validation";
+import { nigerianStateSchema, nigerianPhoneSchema } from "@/lib/validation";
 
 export const checkoutInputSchema = z.object({
   listingId: z.string().uuid(),
@@ -18,7 +18,7 @@ export const checkoutInputSchema = z.object({
     .trim()
     .min(2, "Enter the recipient's full name.")
     .max(100, "Name must be at most 100 characters."),
-  deliveryPhone: e164PhoneSchema,
+  deliveryPhone: nigerianPhoneSchema,
   deliveryAddress: z
     .string()
     .trim()

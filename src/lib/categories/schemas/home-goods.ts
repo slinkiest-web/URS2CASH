@@ -8,7 +8,7 @@ export const SCHEMA_VERSION = 1;
 
 export const HOME_GOODS_SLUG = "home_goods" as const;
 export const HOME_GOODS_ALLOWED_CONDITIONS = ALL_CONDITIONS;
-export const HOME_GOODS_MIN_PHOTOS = 4;
+export const HOME_GOODS_MIN_PHOTOS = 1;
 /**
  * PRD §6.3's usage indicator set for this category — UI reveal-on-`used`,
  * not a validation source. Excludes `functional_status`, which is gated on

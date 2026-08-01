@@ -92,10 +92,10 @@ export function BuyForm({ listingId, priceKobo }: { listingId: string; priceKobo
           name="deliveryPhone"
           type="tel"
           required
-          placeholder="+2348012345678"
+          placeholder="08012345678"
           className={inputClassName}
         />
-        <p className="text-xs text-zinc-500">E.164 format, e.g. +2348012345678.</p>
+        <p className="text-xs text-zinc-500">e.g. 08012345678 — we&apos;ll format it for you.</p>
       </div>
 
       <div className="flex flex-col gap-1.5">

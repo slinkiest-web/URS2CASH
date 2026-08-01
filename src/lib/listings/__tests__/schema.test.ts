@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildListingSubmissionSchema } from "@/lib/listings/schema";
 import { categoryRegistry } from "@/lib/categories/registry";
 
-const beauty = categoryRegistry.beauty; // minPhotos 3, maxPhotos 8
+const beauty = categoryRegistry.beauty; // minPhotos 1, maxPhotos 8
 
 const PHOTO_HOST = "http://127.0.0.1:54321/storage/v1/object/public/listing-photos";
 
@@ -30,8 +30,13 @@ describe("buildListingSubmissionSchema (PRD §7.1/§6.3)", () => {
   });
 
   it("rejects fewer photos than the category minimum", () => {
-    const result = schema.safeParse(validPayload({ photoUrls: [`${PHOTO_HOST}/a.jpg`, `${PHOTO_HOST}/b.jpg`] }));
+    const result = schema.safeParse(validPayload({ photoUrls: [] }));
     expect(result.success).toBe(false);
+  });
+
+  it("accepts a single photo — the minimum is 1, not 3+ (everyday-seller UX)", () => {
+    const result = schema.safeParse(validPayload({ photoUrls: [`${PHOTO_HOST}/a.jpg`] }));
+    expect(result.success).toBe(true);
   });
 
   it("rejects more than 8 photos", () => {

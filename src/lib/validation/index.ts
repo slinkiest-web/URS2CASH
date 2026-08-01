@@ -53,7 +53,13 @@ export const nigerianStateSchema = z.enum(
 
 export type NigerianState = z.infer<typeof nigerianStateSchema>;
 
-/** E.164 phone format — used by `orders.delivery_phone` (required, Epic D1 AC2). */
+/**
+ * Raw E.164 phone format check, no local-format normalization. Not used by
+ * any input field directly — `orders.delivery_phone` accepts local Nigerian
+ * format via `nigerianPhoneSchema` below, same as profile `phone`. Kept as
+ * a building block for anywhere that needs to validate an already-E.164
+ * value without accepting local input.
+ */
 export const e164PhoneSchema = z
   .string()
   .trim()

@@ -510,6 +510,15 @@ export function ListingForm({
   const visibleAttributeFields = attributeFields.filter(
     (field) => condition === "used" || !selectedCategory?.usageIndicatorFields.includes(field.name)
   );
+  // Everyday-seller UX: only genuinely required category attributes show
+  // inline. Everything optional (the bulk of most categories' fields) is
+  // tucked behind an explicit opt-in, so a first-time seller sees a short
+  // form by default instead of every field a category schema supports.
+  // Driven entirely by each field's own required/optional flag (derived
+  // from the Zod schema, src/lib/categories/form-fields.ts) — no
+  // per-category logic here.
+  const requiredAttributeFields = visibleAttributeFields.filter((field) => field.required);
+  const optionalAttributeFields = visibleAttributeFields.filter((field) => !field.required);
 
   return (
     <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-5">
@@ -634,7 +643,7 @@ export function ListingForm({
             </label>
           ) : null}
 
-          {visibleAttributeFields.map((field) => (
+          {requiredAttributeFields.map((field) => (
             <AttributeFieldInput
               key={field.name}
               field={field}
@@ -642,6 +651,30 @@ export function ListingForm({
               onChange={(value) => setAttributeValues((prev) => ({ ...prev, [field.name]: value }))}
             />
           ))}
+
+          {optionalAttributeFields.length > 0 ? (
+            <details
+              className="rounded-md border border-zinc-200 dark:border-zinc-800"
+              open={optionalAttributeFields.some((field) => {
+                const value = attributeValues[field.name];
+                return value !== undefined && value !== null && value !== "";
+              })}
+            >
+              <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Add more details (optional)
+              </summary>
+              <div className="flex flex-col gap-4 border-t border-zinc-200 p-3 dark:border-zinc-800">
+                {optionalAttributeFields.map((field) => (
+                  <AttributeFieldInput
+                    key={field.name}
+                    field={field}
+                    value={attributeValues[field.name]}
+                    onChange={(value) => setAttributeValues((prev) => ({ ...prev, [field.name]: value }))}
+                  />
+                ))}
+              </div>
+            </details>
+          ) : null}
 
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">

@@ -8,7 +8,7 @@ export const SCHEMA_VERSION = 1;
 
 export const FASHION_SLUG = "fashion" as const;
 export const FASHION_ALLOWED_CONDITIONS = ALL_CONDITIONS;
-export const FASHION_MIN_PHOTOS = 4;
+export const FASHION_MIN_PHOTOS = 1;
 /** PRD §6.3's usage indicator set for this category — UI reveal-on-`used`, not a validation source. */
 export const FASHION_USAGE_INDICATOR_FIELDS = ["times_worn_band", "wear_signs"] as const;
 

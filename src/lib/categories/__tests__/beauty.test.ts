@@ -68,23 +68,17 @@ describe("beauty attribute schema (PRD §6.4.1)", () => {
     }
   });
 
-  it("rejects a used listing missing the usage indicator set", () => {
+  it("accepts a used listing with no usage indicator fields — deliberately optional, not required (everyday-seller UX)", () => {
     const result = beautyAttributesSchema.safeParse({
       condition: "used",
       brand: "Fenty",
       product_type: "brush",
       expiry_date: futureExpiry(),
     });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const paths = result.error.issues.map((i) => i.path.join("."));
-      expect(paths).toContain("fill_level_percent");
-      expect(paths).toContain("pao_months");
-      expect(paths).toContain("opened_at_date");
-    }
+    expect(result.success).toBe(true);
   });
 
-  it("rejects an opened_unused listing missing fill_level_percent (required unless brand_new)", () => {
+  it("accepts an opened_unused listing missing fill_level_percent — deliberately optional", () => {
     const result = beautyAttributesSchema.safeParse({
       condition: "opened_unused",
       brand: "Fenty",
@@ -92,6 +86,17 @@ describe("beauty attribute schema (PRD §6.4.1)", () => {
       expiry_date: futureExpiry(),
       pao_months: "12",
       opened_at_date: pastOpenedAt(),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("still rejects a future opened_at_date, when supplied", () => {
+    const result = beautyAttributesSchema.safeParse({
+      condition: "used",
+      brand: "Fenty",
+      product_type: "brush",
+      expiry_date: futureExpiry(),
+      opened_at_date: daysFromNow(10).toISOString(),
     });
     expect(result.success).toBe(false);
   });

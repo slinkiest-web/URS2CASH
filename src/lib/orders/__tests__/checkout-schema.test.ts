@@ -14,8 +14,16 @@ describe("checkoutInputSchema", () => {
     expect(checkoutInputSchema.safeParse(validInput).success).toBe(true);
   });
 
-  it("rejects a non-E.164 phone number", () => {
+  it("accepts a local Nigerian phone format and normalizes it to E.164", () => {
     const result = checkoutInputSchema.safeParse({ ...validInput, deliveryPhone: "08012345678" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.deliveryPhone).toBe("+2348012345678");
+    }
+  });
+
+  it("rejects a phone number that isn't a valid Nigerian shape at all", () => {
+    const result = checkoutInputSchema.safeParse({ ...validInput, deliveryPhone: "not-a-phone" });
     expect(result.success).toBe(false);
   });
 

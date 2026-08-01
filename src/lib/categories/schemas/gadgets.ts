@@ -8,7 +8,7 @@ export const SCHEMA_VERSION = 1;
 
 export const GADGETS_SLUG = "gadgets" as const;
 export const GADGETS_ALLOWED_CONDITIONS = ALL_CONDITIONS;
-export const GADGETS_MIN_PHOTOS = 5;
+export const GADGETS_MIN_PHOTOS = 1;
 /**
  * PRD §6.3's usage indicator set for this category — UI reveal-on-`used`,
  * not a validation source. Excludes `battery_health_percent` and
