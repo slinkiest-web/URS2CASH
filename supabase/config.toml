@@ -156,11 +156,18 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+# Was 127.0.0.1 — split from NEXT_PUBLIC_APP_URL (localhost:3000), the host
+# the app and this whole session actually browse on. Any Supabase-generated
+# absolute link (confirmation email, etc.) pointed at 127.0.0.1 sends the
+# browser to a different host than the one holding the session cookie —
+# cookies don't carry across 127.0.0.1 and localhost even though both are
+# loopback, so following one of those links silently split the session.
+# Found live 2026-08-01 diagnosing a sign-in bounce-loop.
+site_url = "http://localhost:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["http://localhost:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -238,9 +245,27 @@ otp_expiry = 3600
 # PRD Epic A1 AC2: verification email is sent via Resend. Resend's SMTP relay
 # is used so Supabase Auth's own confirmation flow (enable_confirmations
 # above) sends through it — no custom email-sending code is required.
-# RESEND_API_KEY must be set in the environment this CLI runs in.
+#
+# Left disabled by default: `enabled = true` here means GoTrue authenticates
+# against the REAL smtp.resend.com with `pass = env(RESEND_API_KEY)`. With no
+# real key in this environment, every signup/recovery/etc. email send fails
+# outright (Resend returns "535 Authentication credentials invalid"), and
+# because GoTrue's signup is transactional, the whole signUp() call fails and
+# the just-created user is rolled back — sign-up looked like it "did nothing"
+# but was actually failing after ~4s with no user ever created (found live
+# 2026-08-01, confirmed via a raw POST to /auth/v1/signup and the auth
+# container's own logs).
+#
+# With this disabled, GoTrue falls back to its built-in local Mailpit catcher
+# automatically — every local-dev auth email (this one included) lands at
+# http://127.0.0.1:54324 with a real, clickable confirmation link, no
+# external network or API key needed. This is the correct default for local
+# dev. To test real Resend delivery end-to-end before a real deployment,
+# flip `enabled = true`, export a real `RESEND_API_KEY` in the shell that
+# runs `supabase start`, and restart the stack — do not commit that
+# temporarily-flipped state back to `enabled = true`.
 [auth.email.smtp]
-enabled = true
+enabled = false
 host = "smtp.resend.com"
 port = 465
 user = "resend"

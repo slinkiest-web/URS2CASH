@@ -4,7 +4,59 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * urs2cash-ui design system tokens (.agents/skills/urs2cash-ui/SKILL.md),
+ * Revision 2 — bolder/energetic direction (Ulta/ALDO/eBay-inspired),
+ * replacing the original quiet-luxury palette. Prefixed `u2c-` and kept
+ * separate from the shadcn tokens above/below (--background, --accent,
+ * --primary, etc.) on purpose: those are still load-bearing for every
+ * surface this design pass hasn't reached yet. Reusing e.g. `--accent` here
+ * would silently recolour every existing shadcn `bg-accent`/`text-accent`
+ * usage across the whole app in one shot, which is exactly what "one
+ * surface at a time" rules out. As more surfaces migrate, the shadcn tokens
+ * can eventually be retired in favour of these.
+ */
+:root {
+  --u2c-canvas: #f4f5f7;
+  --u2c-surface: #ffffff;
+  --u2c-ink: #15161b;
+  --u2c-ink-soft: #63666f;
+  --u2c-line: #e3e5ea;
+  --u2c-action: #ff4433;
+  --u2c-action-press: #e3341f;
+  --u2c-energy: #ff2e7e;
+  --u2c-trust: #0b5fff;
+  --u2c-trust-soft: #e8efff;
+  --u2c-sale: #ffc400;
+  --u2c-sale-ink: #6b4f00;
+  --u2c-focus: #7c3aed;
+
+  --u2c-radius-card: 12px;
+  --u2c-shadow-rest: 0 1px 2px rgba(21, 22, 27, 0.06);
+  --u2c-shadow-hover: 0 12px 28px rgba(21, 22, 27, 0.14);
+
+  --u2c-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --u2c-dur-fast: 150ms;
+  --u2c-dur-base: 250ms;
+  --u2c-dur-slow: 400ms;
+}
+
 @theme inline {
+  --color-u2c-canvas: var(--u2c-canvas);
+  --color-u2c-surface: var(--u2c-surface);
+  --color-u2c-ink: var(--u2c-ink);
+  --color-u2c-ink-soft: var(--u2c-ink-soft);
+  --color-u2c-line: var(--u2c-line);
+  --color-u2c-action: var(--u2c-action);
+  --color-u2c-action-press: var(--u2c-action-press);
+  --color-u2c-energy: var(--u2c-energy);
+  --color-u2c-trust: var(--u2c-trust);
+  --color-u2c-trust-soft: var(--u2c-trust-soft);
+  --color-u2c-sale: var(--u2c-sale);
+  --color-u2c-sale-ink: var(--u2c-sale-ink);
+  --color-u2c-focus: var(--u2c-focus);
+  --font-display: var(--font-poppins);
+  --font-body: var(--font-inter);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);

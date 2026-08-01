@@ -96,7 +96,15 @@ export async function signInAction(
     return { error: "Invalid email or password." };
   }
 
-  redirect(sanitizeRedirectPath(redirectTo, "/dashboard/profile"));
+  // Was "/dashboard/profile" — every sign-in landed on the profile-edit
+  // form regardless of whether the visitor actually needed it, which read
+  // as a forced profile-completion step. There is no such gate anywhere
+  // else in the app (middleware only protects /sell, /dashboard, /orders;
+  // home/browse/listing/checkout were always reachable) — this default was
+  // the one place actually pushing people there. A real `redirectTo` (set
+  // by middleware when a protected route bounced them to sign-in) still
+  // takes priority and is unaffected.
+  redirect(sanitizeRedirectPath(redirectTo, "/"));
 }
 
 export async function signOutAction(): Promise<void> {

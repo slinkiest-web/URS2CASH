@@ -24,7 +24,8 @@ function isCategorySlug(value: string): value is CategorySlug {
 
 function toCardData(
   listing: Pick<ListingRow, "id" | "title" | "price_kobo" | "condition" | "photo_urls">,
-  categoryName?: string
+  categoryName?: string,
+  sellerHandle?: string
 ): ListingCardData {
   return {
     id: listing.id,
@@ -32,7 +33,9 @@ function toCardData(
     priceKobo: listing.price_kobo,
     condition: listing.condition,
     photoUrl: listing.photo_urls[0] ?? null,
+    secondPhotoUrl: listing.photo_urls[1] ?? null,
     categoryName,
+    sellerHandle,
   };
 }
 
@@ -99,19 +102,21 @@ export async function getCategoryBySlug(supabase: Client, slug: string): Promise
 export async function getRecentlyListed(supabase: Client, limit = 8): Promise<ListingCardData[]> {
   const { data } = await supabase
     .from("listings")
-    .select("id, title, price_kobo, condition, photo_urls, category_id")
+    .select("id, title, price_kobo, condition, photo_urls, category_id, seller_id")
     .eq("status", "published")
     .order("published_at", { ascending: false })
     .limit(limit);
 
   if (!data || data.length === 0) return [];
 
-  const categoryNames = await getCategoryNames(
-    supabase,
-    Array.from(new Set(data.map((row) => row.category_id)))
-  );
+  const [categoryNames, sellerHandles] = await Promise.all([
+    getCategoryNames(supabase, Array.from(new Set(data.map((row) => row.category_id)))),
+    getSellerHandles(supabase, Array.from(new Set(data.map((row) => row.seller_id)))),
+  ]);
 
-  return data.map((row) => toCardData(row, categoryNames.get(row.category_id)));
+  return data.map((row) =>
+    toCardData(row, categoryNames.get(row.category_id), sellerHandles.get(row.seller_id))
+  );
 }
 
 async function getCategoryNames(supabase: Client, categoryIds: string[]): Promise<Map<string, string>> {
@@ -124,6 +129,25 @@ async function getCategoryNames(supabase: Client, categoryIds: string[]): Promis
     if (isCategorySlug(row.slug)) {
       map.set(row.id, categoryRegistry[row.slug].displayName);
     }
+  }
+  return map;
+}
+
+/**
+ * urs2cash-ui skill, product card spec: the "SELLER" meta row. Reads from
+ * `profiles_public` (never the base `profiles` table) — the same
+ * public/private column split this codebase already uses everywhere else a
+ * seller identity surfaces to a buyer (Decision: public-column-privacy
+ * pattern, PROJECT_STATUS.md §4).
+ */
+async function getSellerHandles(supabase: Client, sellerIds: string[]): Promise<Map<string, string>> {
+  if (sellerIds.length === 0) return new Map();
+
+  const { data } = await supabase.from("profiles_public").select("id, handle").in("id", sellerIds);
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    if (row.id && row.handle) map.set(row.id, row.handle);
   }
   return map;
 }

@@ -11,7 +11,12 @@ export default async function SignInPage({
   searchParams: Promise<{ redirectTo?: string; error?: string }>;
 }) {
   const params = await searchParams;
-  const redirectTo = sanitizeRedirectPath(params.redirectTo, "/dashboard/profile");
+  // Was "/dashboard/profile" — this page resolves its own fallback and
+  // passes it to SignInForm as a fixed hidden field, so fixing only the
+  // action's own default (src/lib/actions/auth.ts) was not enough; this is
+  // the value that actually reaches the server on a plain sign-in with no
+  // redirectTo query param. See that file's comment for the full reasoning.
+  const redirectTo = sanitizeRedirectPath(params.redirectTo, "/");
   const initialError = params.error ? ERROR_MESSAGES[params.error] : undefined;
 
   return (

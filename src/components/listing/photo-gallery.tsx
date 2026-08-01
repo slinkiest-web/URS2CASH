@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { isAllowedImageUrl } from "@/lib/images/allowed-hosts";
+import { isAllowedImageUrl, isPrivateIpImageUrl } from "@/lib/images/allowed-hosts";
 
 /**
  * Server Component — a pure-CSS scroll-snap gallery, no client JS required
@@ -41,6 +41,7 @@ export function PhotoGallery({
               src={url}
               alt={`${title} — photo ${index + 1}`}
               fill
+              unoptimized={isPrivateIpImageUrl(url)}
               sizes="(max-width: 640px) 100vw, 66vw"
               priority={index === 0}
               className="object-cover"

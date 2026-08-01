@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
 import { updateProfileAction } from "@/lib/actions/profile";
 import { nigerianStateSchema } from "@/lib/validation";
 import { Button } from "@/components/ui/button";
@@ -12,22 +13,52 @@ type FormState = { error?: string; success?: boolean };
 
 const NIGERIAN_STATES = nigerianStateSchema.options;
 
-async function submitProfile(_prevState: FormState, formData: FormData): Promise<FormState> {
-  const result = await updateProfileAction({
-    displayName: String(formData.get("displayName") ?? ""),
-    bio: String(formData.get("bio") ?? "") || undefined,
-    phone: String(formData.get("phone") ?? "") || undefined,
-    state: String(formData.get("state") ?? ""),
-    avatarUrl: String(formData.get("avatarUrl") ?? "") || undefined,
-  });
-
-  if (!result.ok) {
-    return { error: result.error.message };
-  }
-  return { success: true };
-}
-
 export function ProfileForm({ profile }: { profile: Profile }) {
+  const router = useRouter();
+
+  // Controlled inputs, deliberately — React resets uncontrolled
+  // (defaultValue) form fields whenever a <form action> completes, success
+  // or failure (this is documented React 19 behavior, not specific to this
+  // app). With defaultValue, a rejected save wiped every field the user had
+  // typed, with no way to recover their entries and no visible cause (found
+  // live 2026-08-01). Controlled state isn't touched by that reset, so
+  // whatever the user typed survives a failed save exactly as they left it.
+  const [displayName, setDisplayName] = useState(profile.display_name);
+  const [bio, setBio] = useState(profile.bio ?? "");
+  const [phone, setPhone] = useState(profile.phone ?? "");
+  const [profileState, setProfileState] = useState(profile.state ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url ?? "");
+
+  // No `required`/`minLength`/`type="url"` native HTML constraints on any
+  // field below — deliberately. The browser runs its own constraint
+  // validation on submit BEFORE the form's action ever fires; a field that
+  // fails it (a blank required <select>, a non-URL string in a type="url"
+  // input) silently blocks the click with no network request, no console
+  // error, and no error message of ours — the exact "click Save, nothing
+  // happens" bug (found live 2026-08-01, reproduced with a fresh profile:
+  // state starts unselected, native validation blocked every click before
+  // React ever saw it). Real validation — with a message we control — runs
+  // server-side via profileUpdateSchema; that's the only validation this
+  // form relies on.
+  async function submitProfile(): Promise<FormState> {
+    const result = await updateProfileAction({
+      displayName,
+      bio: bio || undefined,
+      phone: phone || undefined,
+      state: profileState,
+      avatarUrl: avatarUrl || undefined,
+    });
+
+    if (!result.ok) {
+      return { error: result.error.message };
+    }
+    // A successful save used to just sit there with a "Profile saved." line
+    // and nowhere to go — found live 2026-08-01 during demo prep. Send them
+    // somewhere useful instead of leaving them stuck on this page.
+    router.push("/");
+    return { success: true };
+  }
+
   const [state, formAction, pending] = useActionState(submitProfile, {});
 
   return (
@@ -39,10 +70,9 @@ export function ProfileForm({ profile }: { profile: Profile }) {
         <input
           id="displayName"
           name="displayName"
-          defaultValue={profile.display_name}
-          minLength={2}
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
           maxLength={50}
-          required
           className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
         />
       </div>
@@ -54,7 +84,8 @@ export function ProfileForm({ profile }: { profile: Profile }) {
         <textarea
           id="bio"
           name="bio"
-          defaultValue={profile.bio ?? ""}
+          value={bio}
+          onChange={(e) => setBio(e.target.value)}
           maxLength={280}
           rows={3}
           className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
@@ -63,17 +94,18 @@ export function ProfileForm({ profile }: { profile: Profile }) {
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="phone" className="text-sm font-medium">
-          Phone
+          Phone <span className="font-normal text-zinc-500">(optional)</span>
         </label>
         <input
           id="phone"
           name="phone"
           type="tel"
-          defaultValue={profile.phone ?? ""}
-          placeholder="+2348012345678"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="08031234567"
           className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
         />
-        <p className="text-xs text-zinc-500">E.164 format, e.g. +2348012345678.</p>
+        <p className="text-xs text-zinc-500">e.g. 08031234567 — we&apos;ll format it for you.</p>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -83,8 +115,8 @@ export function ProfileForm({ profile }: { profile: Profile }) {
         <select
           id="state"
           name="state"
-          defaultValue={profile.state ?? ""}
-          required
+          value={profileState}
+          onChange={(e) => setProfileState(e.target.value)}
           className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
         >
           <option value="" disabled>
@@ -100,16 +132,21 @@ export function ProfileForm({ profile }: { profile: Profile }) {
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="avatarUrl" className="text-sm font-medium">
-          Avatar URL
+          Profile photo <span className="font-normal text-zinc-500">(optional)</span>
         </label>
         <input
           id="avatarUrl"
           name="avatarUrl"
-          type="url"
-          defaultValue={profile.avatar_url ?? ""}
+          type="text"
+          inputMode="url"
+          value={avatarUrl}
+          onChange={(e) => setAvatarUrl(e.target.value)}
           placeholder="https://…"
           className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
         />
+        <p className="text-xs text-zinc-500">
+          Direct photo upload is coming soon. For now, paste a link to an image if you have one — skip this if you don&apos;t.
+        </p>
       </div>
 
       {state.error ? (

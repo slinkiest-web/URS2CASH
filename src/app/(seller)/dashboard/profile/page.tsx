@@ -60,19 +60,29 @@ export default async function ProfilePage() {
 
       <ProfileForm profile={profile} />
 
-      {!payoutAccount ? (
-        <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-          Add a payout account so you can be paid when you make a sale. You can still publish listings without one.
+      {/*
+        §10 Epic A3 AC5 requires a persistent prompt when there's no payout
+        account, but "persistent" doesn't mean "prominent" or "urgent" — a
+        brand new seller hasn't sold anything yet, so this is deliberately
+        styled as a secondary, informational section (neutral border, no
+        amber/warning treatment) below the main profile form, not a blocking
+        gate. Nothing here prevents ProfileForm's own save from succeeding —
+        they're two independent forms.
+      */}
+      <div className="mt-10 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Payout settings</h2>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          Optional for now — you only need this once you make your first sale. Add it anytime before then.
         </p>
-      ) : null}
-      <div className="mt-3">
-        <PayoutAccountForm
-          existing={
-            payoutAccount
-              ? { bankName: payoutAccount.bank_name, accountNumber: payoutAccount.account_number, accountName: payoutAccount.account_name }
-              : null
-          }
-        />
+        <div className="mt-3">
+          <PayoutAccountForm
+            existing={
+              payoutAccount
+                ? { bankName: payoutAccount.bank_name, accountNumber: payoutAccount.account_number, accountName: payoutAccount.account_name }
+                : null
+            }
+          />
+        </div>
       </div>
     </main>
   );

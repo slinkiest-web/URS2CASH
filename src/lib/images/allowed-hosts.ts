@@ -69,3 +69,25 @@ export function isAllowedImageUrl(url: string): boolean {
     (host) => host.protocol === protocol && hostnameMatches(parsed.hostname, host.hostname)
   );
 }
+
+/**
+ * Next.js's `/_next/image` optimizer refuses to server-side fetch any
+ * upstream URL that resolves to a private IP (SSRF hardening, unrelated to
+ * `remotePatterns` — found live 2026-07-31: a real uploaded local-dev photo
+ * 400'd with "upstream image ... resolved to private ip" even though the
+ * host was correctly allowlisted). Local Supabase Storage runs on
+ * `127.0.0.1`, so every local-dev listing photo trips this. `next/image`'s
+ * `unoptimized` prop skips the server-side proxy fetch entirely — the
+ * browser requests the URL directly instead — which sidesteps the guard
+ * without weakening it, since no server-side fetch of the private address
+ * ever happens. Scoped to exactly this hostname so it can never affect a
+ * real deployment: a production listing photo always lives on
+ * `*.supabase.co`, a public host, never a private IP.
+ */
+export function isPrivateIpImageUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
