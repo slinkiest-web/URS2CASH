@@ -58,7 +58,7 @@ export default async function ProfilePage() {
         </form>
       </div>
 
-      <ProfileForm profile={profile} />
+      <ProfileForm profile={profile} userId={user.id} />
 
       {/*
         §10 Epic A3 AC5 requires a persistent prompt when there's no payout

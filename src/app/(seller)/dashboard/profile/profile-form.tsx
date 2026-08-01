@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { updateProfileAction } from "@/lib/actions/profile";
 import { nigerianStateSchema } from "@/lib/validation";
+import { uploadAvatarPhoto } from "@/lib/storage/upload-avatar-photo";
 import { Button } from "@/components/ui/button";
 import type { Database } from "@/lib/database.types";
 
@@ -13,7 +14,7 @@ type FormState = { error?: string; success?: boolean };
 
 const NIGERIAN_STATES = nigerianStateSchema.options;
 
-export function ProfileForm({ profile }: { profile: Profile }) {
+export function ProfileForm({ profile, userId }: { profile: Profile; userId: string }) {
   const router = useRouter();
 
   // Controlled inputs, deliberately — React resets uncontrolled
@@ -28,6 +29,20 @@ export function ProfileForm({ profile }: { profile: Profile }) {
   const [phone, setPhone] = useState(profile.phone ?? "");
   const [profileState, setProfileState] = useState(profile.state ?? "");
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url ?? "");
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+
+  async function handleAvatarSelect(file: File) {
+    setAvatarUploading(true);
+    setAvatarError(null);
+    const result = await uploadAvatarPhoto(file, userId);
+    setAvatarUploading(false);
+    if (result.ok) {
+      setAvatarUrl(result.url);
+    } else {
+      setAvatarError(result.error);
+    }
+  }
 
   // No `required`/`minLength`/`type="url"` native HTML constraints on any
   // field below — deliberately. The browser runs its own constraint
@@ -131,22 +146,30 @@ export function ProfileForm({ profile }: { profile: Profile }) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="avatarUrl" className="text-sm font-medium">
+        <label htmlFor="avatarFile" className="text-sm font-medium">
           Profile photo <span className="font-normal text-zinc-500">(optional)</span>
         </label>
-        <input
-          id="avatarUrl"
-          name="avatarUrl"
-          type="text"
-          inputMode="url"
-          value={avatarUrl}
-          onChange={(e) => setAvatarUrl(e.target.value)}
-          placeholder="https://…"
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-        />
-        <p className="text-xs text-zinc-500">
-          Direct photo upload is coming soon. For now, paste a link to an image if you have one — skip this if you don&apos;t.
-        </p>
+        <div className="flex items-center gap-3">
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- arbitrary/uploaded avatar URL, see Decision #52
+            <img src={avatarUrl} alt="" className="h-14 w-14 rounded-full object-cover" />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-200 text-sm text-zinc-500 dark:bg-zinc-800">
+              {displayName ? displayName.charAt(0).toUpperCase() : "?"}
+            </div>
+          )}
+          <input
+            id="avatarFile"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(e) => e.target.files?.[0] && handleAvatarSelect(e.target.files[0])}
+            className="text-sm"
+          />
+        </div>
+        {avatarUploading ? <p className="text-xs text-zinc-500">Uploading…</p> : null}
+        {avatarError ? (
+          <p className="text-xs text-red-600 dark:text-red-400">{avatarError}</p>
+        ) : null}
       </div>
 
       {state.error ? (
