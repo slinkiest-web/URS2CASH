@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Poppins, Inter } from "next/font/google";
+import { Geist, Geist_Mono, Fraunces, Inter } from "next/font/google";
 import { SiteHeader } from "@/components/site-header";
 import { PostHogProvider } from "@/components/analytics/posthog-provider";
 import "./globals.css";
@@ -15,15 +15,16 @@ const geistMono = Geist_Mono({
 });
 
 /**
- * urs2cash-ui skill, Typography (Revision 2): the bold rounded geometric
- * sans for headings and prices, replacing the Fraunces serif. `preload:
- * false` per the skill's "never block first paint on the display face" —
- * only the body face (Inter) preloads.
+ * urs2cash-ui skill, Typography (Revision 3, Elegant Burgundy): a warm,
+ * high-contrast serif for headings, the resale-boutique register replacing
+ * revision 2's bold rounded sans. `preload: false` per the skill's "never
+ * block first paint on the display face" — only the body face (Inter)
+ * preloads.
  */
-const poppins = Poppins({
-  variable: "--font-poppins",
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
-  weight: ["700", "800"],
+  weight: ["500", "600"],
   display: "swap",
   preload: false,
 });
@@ -48,7 +49,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} ${inter.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <PostHogProvider>

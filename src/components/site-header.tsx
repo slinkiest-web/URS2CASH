@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBrowsableCategories } from "@/lib/discovery/queries";
 import { signOutAction } from "@/lib/actions/auth";
@@ -14,9 +15,10 @@ import { signOutAction } from "@/lib/actions/auth";
  * no `browsable` concept at all.
  *
  * Auth entry points: signed-out visitors get Sign in / Sign up; signed-in
- * users get Account (-> /dashboard/profile) and Sign out. This is purely a
- * discoverability affordance — every protected route these links lead to
- * (§middleware.ts PROTECTED_PREFIXES) already re-checks the session itself.
+ * users get Sell, My listings, Account (-> /dashboard/profile), and Sign
+ * out. This is purely a discoverability affordance — every protected route
+ * these links lead to (§middleware.ts PROTECTED_PREFIXES) already
+ * re-checks the session itself.
  *
  * Admin entry point: the Admin link only renders for a signed-in user whose
  * own `profiles.is_admin` row is true, read via the caller's own RLS-scoped
@@ -42,42 +44,38 @@ export async function SiteHeader() {
   const categories = await getBrowsableCategories(supabase);
 
   return (
-    <header className="border-b border-zinc-200 dark:border-zinc-800">
+    <header className="border-b border-u2c-line bg-u2c-surface">
       <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-6">
-          <Link href="/" className="text-lg font-semibold tracking-tight">
+          <Link href="/" className="font-display text-xl font-medium text-u2c-ink">
             Urs2Cash
           </Link>
-          <nav className="flex items-center gap-4 text-sm text-zinc-600 dark:text-zinc-400">
+          <nav className="flex items-center gap-4 text-[15px] text-u2c-ink-soft">
             {categories.map((category) => (
-              <Link
-                key={category.slug}
-                href={`/c/${category.slug}`}
-                className="hover:text-zinc-900 dark:hover:text-zinc-50"
-              >
+              <Link key={category.slug} href={`/c/${category.slug}`} className="hover:text-u2c-ink">
                 {category.displayName}
               </Link>
             ))}
           </nav>
         </div>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-          <form action="/search" method="GET" className="flex w-full max-w-sm items-center gap-2">
+          <form action="/search" method="GET" className="relative w-full max-w-sm">
+            <Search
+              size={16}
+              strokeWidth={1.5}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-u2c-ink-soft"
+              aria-hidden
+            />
             <input
               type="search"
               name="q"
               placeholder="Search listings"
-              className="w-full rounded-md border border-zinc-300 bg-transparent px-3 py-1.5 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700"
+              className="w-full rounded-[var(--u2c-radius-control)] border border-u2c-line bg-u2c-canvas py-1.5 pl-9 pr-3 text-[15px] text-u2c-ink outline-none placeholder:text-u2c-ink-soft focus:border-u2c-focus focus:ring-2 focus:ring-u2c-focus/20"
             />
-            <button
-              type="submit"
-              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-            >
-              Search
-            </button>
           </form>
-          <nav className="flex items-center gap-4 text-sm text-zinc-600 dark:text-zinc-400">
+          <nav className="flex items-center gap-4 text-[15px] text-u2c-ink-soft">
             {isAdmin ? (
-              <Link href="/admin" className="font-medium hover:text-zinc-900 dark:hover:text-zinc-50">
+              <Link href="/admin" className="font-medium hover:text-u2c-ink">
                 Admin
               </Link>
             ) : null}
@@ -85,27 +83,30 @@ export async function SiteHeader() {
               <>
                 <Link
                   href="/sell"
-                  className="rounded-md bg-u2c-action px-3 py-1.5 text-sm font-semibold text-white hover:bg-u2c-action-press"
+                  className="rounded-[var(--u2c-radius-control)] bg-u2c-primary px-3 py-1.5 text-[15px] font-semibold text-white transition-colors duration-150 hover:bg-u2c-primary-press"
                 >
                   Sell
                 </Link>
-                <Link href="/dashboard/profile" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                <Link href="/dashboard/listings" className="hover:text-u2c-ink">
+                  My listings
+                </Link>
+                <Link href="/dashboard/profile" className="hover:text-u2c-ink">
                   Account
                 </Link>
                 <form action={signOutAction}>
-                  <button type="submit" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                  <button type="submit" className="hover:text-u2c-ink">
                     Sign out
                   </button>
                 </form>
               </>
             ) : (
               <>
-                <Link href="/sign-in" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                <Link href="/sign-in" className="hover:text-u2c-ink">
                   Sign in
                 </Link>
                 <Link
                   href="/sign-up"
-                  className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
+                  className="rounded-[var(--u2c-radius-control)] bg-u2c-ink px-3 py-1.5 text-[15px] font-medium text-white hover:bg-u2c-primary"
                 >
                   Sign up
                 </Link>

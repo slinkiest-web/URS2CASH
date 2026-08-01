@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ImageOff } from "lucide-react";
 import { formatKobo } from "@/lib/money";
 import { isAllowedImageUrl, isPrivateIpImageUrl } from "@/lib/images/allowed-hosts";
 
@@ -64,9 +65,9 @@ export function ListingCard({ listing }: { listing: ListingCardData }) {
   return (
     <Link
       href={`/l/${listing.id}`}
-      className="group flex flex-col overflow-hidden rounded-[var(--u2c-radius-card)] bg-u2c-surface shadow-[var(--u2c-shadow-rest)] transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-[3px] hover:shadow-[var(--u2c-shadow-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-u2c-focus motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="group flex flex-col overflow-hidden rounded-[var(--u2c-radius-card)] bg-u2c-surface shadow-[var(--u2c-shadow-rest)] transition-[transform,box-shadow] duration-[220ms] ease-out hover:-translate-y-[2px] hover:shadow-[var(--u2c-shadow-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-u2c-focus motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
-      <div className="relative aspect-[4/5] w-full overflow-hidden bg-u2c-line">
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-u2c-cream">
         {showPhoto ? (
           <>
             <Image
@@ -75,10 +76,10 @@ export function ListingCard({ listing }: { listing: ListingCardData }) {
               fill
               unoptimized={isPrivateIpImageUrl(listing.photoUrl as string)}
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              className={`object-cover transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none ${
+              className={`object-cover transition-[opacity,transform] duration-[380ms] ease-out motion-reduce:transition-none ${
                 showSecondPhoto
                   ? "group-hover:opacity-0"
-                  : "group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
+                  : "group-hover:scale-[1.02] motion-reduce:group-hover:scale-100"
               }`}
             />
             {showSecondPhoto ? (
@@ -89,11 +90,17 @@ export function ListingCard({ listing }: { listing: ListingCardData }) {
                 fill
                 unoptimized={isPrivateIpImageUrl(listing.secondPhotoUrl as string)}
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                className="object-cover opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100 motion-reduce:transition-none"
+                className="object-cover opacity-0 transition-opacity duration-[380ms] ease-out group-hover:opacity-100 motion-reduce:transition-none"
               />
             ) : null}
           </>
-        ) : null}
+        ) : (
+          // urs2cash-ui skill, non-negotiable #9: a quiet placeholder, never
+          // a generated gradient tile standing in for a missing photo.
+          <div className="flex h-full w-full items-center justify-center">
+            <ImageOff size={28} strokeWidth={1.5} className="text-u2c-ink-soft opacity-40" aria-hidden />
+          </div>
+        )}
       </div>
       <div className="flex flex-1 flex-col gap-1 border-t border-u2c-line p-3">
         {listing.sellerHandle || listing.categoryName ? (
@@ -107,7 +114,10 @@ export function ListingCard({ listing }: { listing: ListingCardData }) {
           </span>
         ) : null}
         <h3 className="line-clamp-2 text-[15px] font-medium text-u2c-ink">{listing.title}</h3>
-        <span className="mt-1 font-display text-[1.375rem] font-extrabold text-u2c-action">
+        {/* urs2cash-ui skill: price is small and calm, Inter not the
+            display serif, semibold not black, never the loudest thing
+            on the card. */}
+        <span className="mt-1 text-[1.0625rem] font-semibold text-u2c-primary">
           {formatKobo(listing.priceKobo)}
         </span>
         <span className="text-[13px] tracking-[0.01em] text-u2c-ink-soft">
