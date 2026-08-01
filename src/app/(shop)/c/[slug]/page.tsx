@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import {
   getCategoryBySlug,
@@ -84,107 +85,120 @@ export default async function CategoryPage({
   const { items, hasMore } = await getCategoryListings(supabase, category.id, filters, page);
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 py-10">
-      <h1 className="text-2xl font-semibold tracking-tight">{category.displayName}</h1>
+    <main className="flex flex-1 flex-col bg-u2c-canvas">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6 lg:px-12">
+        <h1 className="font-display text-2xl font-medium text-u2c-ink">{category.displayName}</h1>
 
-      {/* GET form: filter state lives entirely in the URL query string, so
-          every combination is a shareable, bookmarkable link, and the page
-          stays a pure Server Component (no client JS required to filter). */}
-      <form method="GET" className="flex flex-wrap items-end gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-        <label className="flex flex-col gap-1 text-sm">
-          Min price (₦)
-          <input
-            type="number"
-            name="price_min"
-            min={0}
-            defaultValue={priceMinNaira}
-            className="w-28 rounded-md border border-zinc-300 bg-transparent px-2 py-1 dark:border-zinc-700"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Max price (₦)
-          <input
-            type="number"
-            name="price_max"
-            min={0}
-            defaultValue={priceMaxNaira}
-            className="w-28 rounded-md border border-zinc-300 bg-transparent px-2 py-1 dark:border-zinc-700"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Condition
-          <select
-            name="condition"
-            defaultValue={condition ?? ""}
-            className="w-40 rounded-md border border-zinc-300 bg-transparent px-2 py-1 dark:border-zinc-700"
-          >
-            <option value="">Any condition</option>
-            {categoryConfig.allowedConditions.map((value) => (
-              <option key={value} value={value}>
-                {CONDITION_LABELS[value] ?? value}
-              </option>
-            ))}
-          </select>
-        </label>
-        {attributeFilterDescriptors.map((field) => (
-          <label key={field.name} className="flex flex-col gap-1 text-sm capitalize">
-            {field.name.replace(/_/g, " ")}
+        {/* GET form: filter state lives entirely in the URL query string, so
+            every combination is a shareable, bookmarkable link, and the page
+            stays a pure Server Component (no client JS required to filter). */}
+        <form
+          method="GET"
+          className="flex flex-wrap items-end gap-4 rounded-[var(--u2c-radius-card)] border border-u2c-line bg-u2c-surface p-4"
+        >
+          <label className="flex flex-col gap-1 text-[13px] text-u2c-ink-soft">
+            Min price (₦)
+            <input
+              type="number"
+              name="price_min"
+              min={0}
+              defaultValue={priceMinNaira}
+              className="w-28 rounded-[var(--u2c-radius-control)] border border-u2c-line bg-u2c-canvas px-2 py-1 text-[15px] text-u2c-ink outline-none focus:border-u2c-focus"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[13px] text-u2c-ink-soft">
+            Max price (₦)
+            <input
+              type="number"
+              name="price_max"
+              min={0}
+              defaultValue={priceMaxNaira}
+              className="w-28 rounded-[var(--u2c-radius-control)] border border-u2c-line bg-u2c-canvas px-2 py-1 text-[15px] text-u2c-ink outline-none focus:border-u2c-focus"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[13px] text-u2c-ink-soft">
+            Condition
             <select
-              name={`attr_${field.name}`}
-              defaultValue={attributeFilters[field.name] ?? ""}
-              className="w-40 rounded-md border border-zinc-300 bg-transparent px-2 py-1 dark:border-zinc-700"
+              name="condition"
+              defaultValue={condition ?? ""}
+              className="w-40 rounded-[var(--u2c-radius-control)] border border-u2c-line bg-u2c-canvas px-2 py-1 text-[15px] text-u2c-ink outline-none focus:border-u2c-focus"
             >
-              <option value="">Any</option>
-              {field.kind === "boolean"
-                ? [
-                    <option key="true" value="true">
-                      Yes
-                    </option>,
-                    <option key="false" value="false">
-                      No
-                    </option>,
-                  ]
-                : field.kind === "enum"
-                  ? field.options.map((option) => (
-                      <option key={option} value={option}>
-                        {option.replace(/_/g, " ")}
-                      </option>
-                    ))
-                  : null}
+              <option value="">Any condition</option>
+              {categoryConfig.allowedConditions.map((value) => (
+                <option key={value} value={value}>
+                  {CONDITION_LABELS[value] ?? value}
+                </option>
+              ))}
             </select>
           </label>
-        ))}
-        <button
-          type="submit"
-          className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-        >
-          Apply filters
-        </button>
-      </form>
-
-      {items.length > 0 ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-          {items.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} />
+          {attributeFilterDescriptors.map((field) => (
+            <label key={field.name} className="flex flex-col gap-1 text-[13px] capitalize text-u2c-ink-soft">
+              {field.name.replace(/_/g, " ")}
+              <select
+                name={`attr_${field.name}`}
+                defaultValue={attributeFilters[field.name] ?? ""}
+                className="w-40 rounded-[var(--u2c-radius-control)] border border-u2c-line bg-u2c-canvas px-2 py-1 text-[15px] text-u2c-ink outline-none focus:border-u2c-focus"
+              >
+                <option value="">Any</option>
+                {field.kind === "boolean"
+                  ? [
+                      <option key="true" value="true">
+                        Yes
+                      </option>,
+                      <option key="false" value="false">
+                        No
+                      </option>,
+                    ]
+                  : field.kind === "enum"
+                    ? field.options.map((option) => (
+                        <option key={option} value={option}>
+                          {option.replace(/_/g, " ")}
+                        </option>
+                      ))
+                    : null}
+              </select>
+            </label>
           ))}
-        </div>
-      ) : (
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">No listings match these filters yet.</p>
-      )}
+          <button
+            type="submit"
+            className="h-9 rounded-[var(--u2c-radius-control)] bg-u2c-primary px-4 text-[15px] font-semibold text-white transition-colors duration-150 hover:bg-u2c-primary-press"
+          >
+            Apply filters
+          </button>
+        </form>
 
-      <div className="flex items-center justify-between text-sm">
-        {page > 1 ? (
-          <a href={buildHref(slug, resolvedSearchParams, { page: String(page - 1) })} className="underline">
-            Previous
-          </a>
+        {items.length > 0 ? (
+          <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4">
+            {items.map((listing) => (
+              <ListingCard key={listing.id} listing={listing} />
+            ))}
+          </div>
         ) : (
-          <span />
+          <p className="text-[15px] text-u2c-ink-soft">No listings match these filters yet.</p>
         )}
-        {hasMore ? (
-          <a href={buildHref(slug, resolvedSearchParams, { page: String(page + 1) })} className="underline">
-            Next
-          </a>
-        ) : null}
+
+        <div className="flex items-center justify-between text-[15px] text-u2c-ink">
+          {page > 1 ? (
+            <a
+              href={buildHref(slug, resolvedSearchParams, { page: String(page - 1) })}
+              className="inline-flex items-center gap-1 hover:text-u2c-primary"
+            >
+              <ChevronLeft size={16} strokeWidth={1.5} aria-hidden />
+              Previous
+            </a>
+          ) : (
+            <span />
+          )}
+          {hasMore ? (
+            <a
+              href={buildHref(slug, resolvedSearchParams, { page: String(page + 1) })}
+              className="inline-flex items-center gap-1 hover:text-u2c-primary"
+            >
+              Next
+              <ChevronRight size={16} strokeWidth={1.5} aria-hidden />
+            </a>
+          ) : null}
+        </div>
       </div>
     </main>
   );
