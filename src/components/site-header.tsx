@@ -83,6 +83,12 @@ export async function SiteHeader() {
             ) : null}
             {user ? (
               <>
+                <Link
+                  href="/sell"
+                  className="rounded-md bg-u2c-action px-3 py-1.5 text-sm font-semibold text-white hover:bg-u2c-action-press"
+                >
+                  Sell
+                </Link>
                 <Link href="/dashboard/profile" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                   Account
                 </Link>
