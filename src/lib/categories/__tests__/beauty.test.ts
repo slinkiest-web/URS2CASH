@@ -55,6 +55,15 @@ describe("beauty attribute schema (PRD §6.4.1)", () => {
     expect(result.success).toBe(false);
   });
 
+  it("accepts a listing with no expiry_date at all — deliberately optional, gated behind a yes/no question in the UI (design/UX pass 2026-08-07)", () => {
+    const result = beautyAttributesSchema.safeParse({
+      condition: "brand_new",
+      brand: "Fenty",
+      product_type: "brush",
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("rejects expiry_date less than 90 days out", () => {
     const result = beautyAttributesSchema.safeParse({
       condition: "brand_new",

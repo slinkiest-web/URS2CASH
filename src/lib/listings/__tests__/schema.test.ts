@@ -29,6 +29,28 @@ describe("buildListingSubmissionSchema (PRD §7.1/§6.3)", () => {
     expect(schema.safeParse(validPayload({ title: "Hi" })).success).toBe(false);
   });
 
+  it("accepts a submission with no description at all — only title/price/condition/photo are required (design/UX pass 2026-08-07)", () => {
+    const result = schema.safeParse(validPayload({ description: undefined }));
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.description).toBe("");
+  });
+
+  it("accepts a short description — no minimum length anymore", () => {
+    const result = schema.safeParse(validPayload({ description: "Cute." }));
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts optional reasonForSelling and timesUsed, general to every category", () => {
+    const result = schema.safeParse(
+      validPayload({ reasonForSelling: "No longer my shade", timesUsed: "Twice" })
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.reasonForSelling).toBe("No longer my shade");
+      expect(result.data.timesUsed).toBe("Twice");
+    }
+  });
+
   it("rejects fewer photos than the category minimum", () => {
     const result = schema.safeParse(validPayload({ photoUrls: [] }));
     expect(result.success).toBe(false);
@@ -44,27 +66,27 @@ describe("buildListingSubmissionSchema (PRD §7.1/§6.3)", () => {
     expect(schema.safeParse(validPayload({ photoUrls })).success).toBe(false);
   });
 
-  it("rejects `used` without condition_notes", () => {
-    const result = schema.safeParse(validPayload({ condition: "used", flawPhotoIndexes: [0] }));
-    expect(result.success).toBe(false);
+  it("accepts `used` with no condition_notes and no flaw photo at all — flaws are optional, never gated on condition (design/UX pass 2026-08-07)", () => {
+    const result = schema.safeParse(validPayload({ condition: "used", flawPhotoIndexes: [] }));
+    expect(result.success).toBe(true);
   });
 
-  it("rejects `used` with condition_notes under 20 characters", () => {
+  it("accepts a short condition_notes — no minimum length anymore", () => {
     const result = schema.safeParse(
-      validPayload({ condition: "used", conditionNotes: "too short", flawPhotoIndexes: [0] })
+      validPayload({ condition: "used", conditionNotes: "too short", flawPhotoIndexes: [] })
     );
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
-  it("rejects `used` without at least one flaw photo index", () => {
+  it("accepts a brand_new listing with condition_notes and a tagged flaw photo — flaws are independent of condition", () => {
     const result = schema.safeParse(
       validPayload({
-        condition: "used",
-        conditionNotes: "Some light wear on the cap, otherwise in good shape overall.",
-        flawPhotoIndexes: [],
+        condition: "brand_new",
+        conditionNotes: "Tiny scuff on the box corner, item itself is untouched.",
+        flawPhotoIndexes: [0],
       })
     );
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it("accepts a valid `used` submission with notes and a tagged flaw photo", () => {

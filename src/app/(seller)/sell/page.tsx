@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { categoryRegistry, type CategorySlug } from "@/lib/categories/registry";
 import { ListingForm, type SellableCategory, type ExistingListing } from "./listing-form";
@@ -86,6 +87,8 @@ export default async function SellPage({
           priceKobo: row.price_kobo,
           condition: row.condition,
           conditionNotes: row.condition_notes,
+          reasonForSelling: row.reason_for_selling,
+          timesUsed: row.times_used,
           attributes: (row.attributes as Record<string, unknown>) ?? {},
           photoUrls: row.photo_urls,
           flawPhotoIndexes: row.flaw_photo_indexes,
@@ -118,24 +121,51 @@ export default async function SellPage({
     }
   }
 
-  return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-16">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        {existingListing ? (existingListing.status === "draft" ? "Resume draft" : "Edit listing") : "Sell an item"}
-      </h1>
-      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-        {existingListing?.status === "published"
-          ? "Price, condition, and category are locked once published."
-          : "Your listing goes live immediately once published."}
-      </p>
+  const isNewListing = !existingListing;
 
-      <ListingForm
-        categories={categories}
-        sellerId={user.id}
-        isFirstListing={(existingListingCount ?? 0) === 0}
-        existingListing={existingListing}
-        defaultCategorySlug={defaultCategorySlug}
-      />
+  return (
+    <main className="flex flex-1 flex-col bg-u2c-canvas">
+      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-10 px-4 py-12 sm:px-6 sm:py-16 lg:flex-row lg:items-start lg:gap-12 lg:px-12">
+        <div className="flex flex-col gap-6 lg:w-2/5 lg:shrink-0">
+          <div>
+            <h1 className="font-display text-3xl font-extrabold text-u2c-ink sm:text-4xl">
+              {existingListing
+                ? existingListing.status === "draft"
+                  ? "Resume draft"
+                  : "Edit listing"
+                : "Sell an item"}
+            </h1>
+            <p className="mt-2 text-[15px] text-u2c-ink-soft">
+              {existingListing?.status === "published"
+                ? "Price, condition, and category are locked once published."
+                : "A title, a price, a category, a condition, and one photo. That's it, it's live in a couple of minutes."}
+            </p>
+          </div>
+
+          {isNewListing ? (
+            <div className="relative hidden aspect-[4/5] w-full overflow-hidden rounded-[var(--u2c-radius-card)] bg-u2c-tile sm:block">
+              <Image
+                src="/images/marketing/fashion-sell.jpg"
+                alt=""
+                fill
+                sizes="(max-width: 1024px) 100vw, 40vw"
+                className="object-cover"
+                priority
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex-1">
+          <ListingForm
+            categories={categories}
+            sellerId={user.id}
+            isFirstListing={(existingListingCount ?? 0) === 0}
+            existingListing={existingListing}
+            defaultCategorySlug={defaultCategorySlug}
+          />
+        </div>
+      </div>
     </main>
   );
 }

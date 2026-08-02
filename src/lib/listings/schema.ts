@@ -1,15 +1,19 @@
 /**
- * Listing-level Zod schema. PRD §7.1 (title/description/price/photo bounds),
- * §6.3 (used requires condition_notes + wear-evidence photo).
+ * Listing-level Zod schema (title/description/price/photo bounds).
  *
  * This validates the fields that live on `listings` directly, never in the
  * category `attributes` JSONB — title, description, price_kobo, photo_urls,
- * flaw_photo_indexes, condition_notes. Category-specific attributes and
- * `condition` membership are validated separately by
- * `resolveCategoryAttributes` (src/lib/categories/resolver.ts); this schema
- * does not re-validate `condition` against the category's allowed set, only
- * gates condition_notes/flaw_photo_indexes on it, so there is exactly one
- * place condition membership is decided.
+ * flaw_photo_indexes, condition_notes, reason_for_selling, times_used.
+ * Category-specific attributes and `condition` membership are validated
+ * separately by `resolveCategoryAttributes` (src/lib/categories/resolver.ts).
+ *
+ * Design/UX pass (2026-08-07): only title, price, condition, and 1+ photo
+ * are required to publish. Everything else here — description,
+ * conditionNotes, reasonForSelling, timesUsed — is optional, with no
+ * minimum length, and never gated on `condition`. "Does this item have any
+ * flaws?" is an independent yes/no question in the UI; conditionNotes and
+ * flawPhotoIndexes are how a "yes" answer gets recorded, not a requirement
+ * that fires off `condition === "used"`.
  */
 import { z } from "zod";
 import type { CategoryConfig } from "@/lib/categories/registry";
@@ -33,18 +37,24 @@ export function buildListingSubmissionSchema(category: CategoryConfig) {
   return z
     .object({
       title: z.string().trim().min(5, "Title must be at least 5 characters.").max(90),
-      description: z
-        .string()
-        .trim()
-        .min(20, "Description must be at least 20 characters.")
-        .max(1500),
+      // Everyday-seller UX: no minimum. "Description" and the old, always
+      // required "condition notes" concept are one free-text field now —
+      // whether an item has flaws is a separate, independent, optional
+      // question (the flawPhotoIndexes/conditionNotes pair below), never
+      // coupled to `condition` and never blocking.
+      description: z.string().trim().max(1500).optional().default(""),
       priceKobo: z
         .number()
         .int()
         .min(50000, "Price must be at least ₦500.")
         .max(500000000),
       condition: z.string(),
-      conditionNotes: z.string().trim().optional(),
+      // Repurposed: no longer gated on condition === "used". Populated only
+      // when the seller opts into "Does this item have any flaws?" — always
+      // optional, no minimum length, never required.
+      conditionNotes: z.string().trim().max(1000).optional(),
+      reasonForSelling: z.string().trim().max(500).optional(),
+      timesUsed: z.string().trim().max(100).optional(),
       photoUrls: z
         .array(listingPhotoUrlSchema)
         .min(category.minPhotos, `At least ${category.minPhotos} photos are required for ${category.displayName}.`)
@@ -52,25 +62,9 @@ export function buildListingSubmissionSchema(category: CategoryConfig) {
       flawPhotoIndexes: z.array(z.number().int().min(0)).default([]),
     })
     .superRefine((data, ctx) => {
-      // §6.3 HARD RULE: used requires condition_notes >= 20 chars, plus at
-      // least one photo tagged as wear evidence.
-      if (data.condition === "used") {
-        if (!data.conditionNotes || data.conditionNotes.length < 20) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["conditionNotes"],
-            message: "condition_notes must be at least 20 characters when condition is used.",
-          });
-        }
-        if (data.flawPhotoIndexes.length < 1) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["flawPhotoIndexes"],
-            message: "At least one photo must be tagged as wear evidence when condition is used.",
-          });
-        }
-      }
-
+      // The only remaining cross-field rule: a tagged flaw photo index must
+      // actually point at a submitted photo. Nothing here blocks on
+      // condition or on flaws being present at all (see comments above).
       data.flawPhotoIndexes.forEach((index, i) => {
         if (index >= data.photoUrls.length) {
           ctx.addIssue({

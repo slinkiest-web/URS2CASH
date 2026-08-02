@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { Upload, X } from "lucide-react";
 import { createListing, updateListing } from "@/lib/actions/listings";
 import { getAttributeFieldDescriptors, type FieldDescriptor } from "@/lib/categories/form-fields";
 import type { CategorySlug } from "@/lib/categories/registry";
@@ -10,7 +12,6 @@ import { categoryRegistry } from "@/lib/categories/registry";
 import { uploadListingPhoto } from "@/lib/storage/upload-listing-photo";
 import { track } from "@/lib/analytics/track-client";
 import { nairaToKobo, formatKobo } from "@/lib/money";
-import { Button } from "@/components/ui/button";
 
 export type SellableCategory = {
   slug: CategorySlug;
@@ -31,6 +32,8 @@ export type ExistingListing = {
   priceKobo: number;
   condition: string;
   conditionNotes: string | null;
+  reasonForSelling: string | null;
+  timesUsed: string | null;
   attributes: Record<string, unknown>;
   photoUrls: string[];
   flawPhotoIndexes: number[];
@@ -51,6 +54,9 @@ type StoredDraft = {
   description: string;
   priceNaira: string;
   conditionNotes: string;
+  reasonForSelling: string;
+  timesUsed: string;
+  hasFlaws: boolean;
   attributeValues: Record<string, unknown>;
 };
 
@@ -77,6 +83,14 @@ function humanizeFieldName(name: string): string {
   return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const fieldLabelClass = "text-[13px] font-bold text-u2c-ink";
+const fieldHintClass = "text-[13px] font-normal text-u2c-ink-soft normal-case";
+const inputBaseClass =
+  "h-11 rounded-[var(--u2c-radius-control)] border border-u2c-line bg-u2c-surface px-3 text-[15px] text-u2c-ink outline-none placeholder:text-u2c-ink-soft focus:border-u2c-focus focus:ring-2 focus:ring-u2c-focus/20";
+const textareaClass =
+  "rounded-[var(--u2c-radius-control)] border border-u2c-line bg-u2c-surface px-3 py-2.5 text-[15px] text-u2c-ink outline-none placeholder:text-u2c-ink-soft focus:border-u2c-focus focus:ring-2 focus:ring-u2c-focus/20";
+const selectClass = inputBaseClass;
+
 function AttributeFieldInput({
   field,
   value,
@@ -86,19 +100,17 @@ function AttributeFieldInput({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
-  const label = `${humanizeFieldName(field.name)}${field.required ? " *" : ""}`;
-  const inputClass =
-    "rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+  const label = `${humanizeFieldName(field.name)}${field.required ? "" : " (optional)"}`;
 
   switch (field.kind) {
     case "enum":
       return (
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">{label}</span>
+          <span className={fieldLabelClass}>{label}</span>
           <select
             value={typeof value === "string" ? value : ""}
             onChange={(e) => onChange(e.target.value || undefined)}
-            className={inputClass}
+            className={selectClass}
           >
             <option value="">Select…</option>
             {field.options.map((option) => (
@@ -113,10 +125,10 @@ function AttributeFieldInput({
       const selected = Array.isArray(value) ? (value as string[]) : [];
       return (
         <fieldset className="flex flex-col gap-1.5">
-          <legend className="text-sm font-medium">{label}</legend>
+          <legend className={fieldLabelClass}>{label}</legend>
           <div className="flex flex-wrap gap-3">
             {field.options.map((option) => (
-              <label key={option} className="flex items-center gap-1.5 text-sm">
+              <label key={option} className="flex items-center gap-1.5 text-[14px] text-u2c-ink">
                 <input
                   type="checkbox"
                   checked={selected.includes(option)}
@@ -136,7 +148,7 @@ function AttributeFieldInput({
     }
     case "boolean":
       return (
-        <label className="flex items-center gap-2 text-sm font-medium">
+        <label className="flex items-center gap-2 text-[14px] font-medium text-u2c-ink">
           <input type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} />
           {label}
         </label>
@@ -144,24 +156,24 @@ function AttributeFieldInput({
     case "number":
       return (
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">{label}</span>
+          <span className={fieldLabelClass}>{label}</span>
           <input
             type="number"
             value={typeof value === "number" ? value : ""}
             onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-            className={inputClass}
+            className={inputBaseClass}
           />
         </label>
       );
     case "date":
       return (
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">{label}</span>
+          <span className={fieldLabelClass}>{label}</span>
           <input
             type="date"
             value={typeof value === "string" ? value : ""}
             onChange={(e) => onChange(e.target.value || undefined)}
-            className={inputClass}
+            className={inputBaseClass}
           />
         </label>
       );
@@ -169,7 +181,7 @@ function AttributeFieldInput({
       const items = Array.isArray(value) ? (value as string[]) : [];
       return (
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">{label}</span>
+          <span className={fieldLabelClass}>{label}</span>
           <input
             type="text"
             placeholder="Comma-separated"
@@ -182,7 +194,7 @@ function AttributeFieldInput({
                   .filter(Boolean)
               )
             }
-            className={inputClass}
+            className={inputBaseClass}
           />
         </label>
       );
@@ -190,8 +202,8 @@ function AttributeFieldInput({
     case "object": {
       const nested = (value as Record<string, unknown>) ?? {};
       return (
-        <fieldset className="flex flex-col gap-3 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-          <legend className="text-sm font-medium">{humanizeFieldName(field.name)}</legend>
+        <fieldset className="flex flex-col gap-3 rounded-[var(--u2c-radius-card)] border border-u2c-line p-3">
+          <legend className={fieldLabelClass}>{humanizeFieldName(field.name)}</legend>
           {field.fields.map((nestedField) => (
             <AttributeFieldInput
               key={nestedField.name}
@@ -207,12 +219,12 @@ function AttributeFieldInput({
     default:
       return (
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">{label}</span>
+          <span className={fieldLabelClass}>{label}</span>
           <input
             type="text"
             value={typeof value === "string" ? value : ""}
             onChange={(e) => onChange(e.target.value || undefined)}
-            className={inputClass}
+            className={inputBaseClass}
           />
         </label>
       );
@@ -250,6 +262,14 @@ export function ListingForm({
   const [description, setDescription] = useState(existingListing?.description ?? "");
   const [priceNaira, setPriceNaira] = useState(
     existingListing ? String(existingListing.priceKobo / 100) : ""
+  );
+  const [reasonForSelling, setReasonForSelling] = useState(existingListing?.reasonForSelling ?? "");
+  const [timesUsed, setTimesUsed] = useState(existingListing?.timesUsed ?? "");
+  // "Does this item have any flaws?" — independent of condition, always
+  // optional, never blocking. Pre-checked on edit only if there's already
+  // something to show for it.
+  const [hasFlaws, setHasFlaws] = useState(
+    Boolean(existingListing?.conditionNotes) || Boolean(existingListing?.flawPhotoIndexes.length)
   );
   const [conditionNotes, setConditionNotes] = useState(existingListing?.conditionNotes ?? "");
   const [photos, setPhotos] = useState<PhotoState[]>(() =>
@@ -289,6 +309,9 @@ export function ListingForm({
     setDescription(draft.description);
     setPriceNaira(draft.priceNaira);
     setConditionNotes(draft.conditionNotes);
+    setReasonForSelling(draft.reasonForSelling ?? "");
+    setTimesUsed(draft.timesUsed ?? "");
+    setHasFlaws(draft.hasFlaws ?? false);
     setAttributeValues(draft.attributeValues);
     setDraftStartedAt(Date.now());
     setRestoredFromLocalDraft(true);
@@ -313,12 +336,27 @@ export function ListingForm({
         description,
         priceNaira,
         conditionNotes,
+        reasonForSelling,
+        timesUsed,
+        hasFlaws,
         attributeValues,
       };
       window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => clearTimeout(timeout);
-  }, [isEditing, categorySlug, condition, title, description, priceNaira, conditionNotes, attributeValues]);
+  }, [
+    isEditing,
+    categorySlug,
+    condition,
+    title,
+    description,
+    priceNaira,
+    conditionNotes,
+    reasonForSelling,
+    timesUsed,
+    hasFlaws,
+    attributeValues,
+  ]);
 
   const selectedCategory = categories.find((c) => c.slug === categorySlug);
 
@@ -401,16 +439,23 @@ export function ListingForm({
 
     const photoUrls = photos.filter((p) => p.uploadedUrl).map((p) => p.uploadedUrl as string);
     const priceKobo = nairaToKobo(Number(priceNaira) || 0);
+    // "Does this item have any flaws?" gates whether conditionNotes/
+    // flawPhotoIndexes are sent at all — unchecked means neither, regardless
+    // of what's still sitting in local state (e.g. after unticking).
+    const submittedConditionNotes = hasFlaws && conditionNotes ? conditionNotes : undefined;
+    const submittedFlawPhotoIndexes = hasFlaws ? flawPhotoIndexes : [];
 
     if (isEditing && existingListing) {
       const result = await updateListing({
         listingId: existingListing.id,
         title,
         description,
-        conditionNotes: conditionNotes || undefined,
+        conditionNotes: submittedConditionNotes,
+        reasonForSelling: reasonForSelling || undefined,
+        timesUsed: timesUsed || undefined,
         attributes: attributeValues,
         photoUrls,
-        flawPhotoIndexes,
+        flawPhotoIndexes: submittedFlawPhotoIndexes,
         // §11.2 HARD RULE: price/condition/category must not even be sent
         // once published — the action rejects the attempt outright if they
         // are present at all, regardless of whether the value changed.
@@ -438,10 +483,12 @@ export function ListingForm({
       description,
       priceKobo,
       condition,
-      conditionNotes: conditionNotes || undefined,
+      conditionNotes: submittedConditionNotes,
+      reasonForSelling: reasonForSelling || undefined,
+      timesUsed: timesUsed || undefined,
       attributes: attributeValues,
       photoUrls,
-      flawPhotoIndexes,
+      flawPhotoIndexes: submittedFlawPhotoIndexes,
       draftStartedAt,
       saveAsDraft: intent === "draft",
     });
@@ -479,6 +526,9 @@ export function ListingForm({
     setDescription("");
     setPriceNaira("");
     setConditionNotes("");
+    setReasonForSelling("");
+    setTimesUsed("");
+    setHasFlaws(false);
     setPhotos([]);
     setFlawPhotoIndexes([]);
     setAttributeValues(preservedBrand !== undefined ? { brand: preservedBrand } : {});
@@ -491,15 +541,19 @@ export function ListingForm({
   if (publishedListingId) {
     return (
       <div className="mt-8 flex flex-col gap-4">
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
-          <p className="font-medium">Listing published.</p>
-          <p className="mt-1">It&apos;s live now and can be found through search and by direct link.</p>
+        <div className="rounded-[var(--u2c-radius-card)] border border-u2c-line bg-u2c-tile p-5 text-[15px] text-u2c-ink">
+          <p className="font-display text-lg font-extrabold">Listing published</p>
+          <p className="mt-1 text-u2c-ink-soft">It&apos;s live now and can be found through search and by direct link.</p>
         </div>
         {/* §10 Epic B2 AC2: "List another" is the primary action. */}
-        <Button type="button" onClick={handleListAnother} className="self-start">
+        <button
+          type="button"
+          onClick={handleListAnother}
+          className="inline-flex h-11 w-fit items-center rounded-[var(--u2c-radius-control)] bg-u2c-primary px-6 text-[13px] font-bold uppercase tracking-[0.03em] text-white transition-colors duration-150 hover:bg-u2c-primary-press"
+        >
           List another item
-        </Button>
-        <a href="/dashboard/listings" className="text-sm text-zinc-600 underline dark:text-zinc-400">
+        </button>
+        <a href="/dashboard/listings" className="text-[14px] text-u2c-ink-soft underline hover:text-u2c-ink">
           Continue to dashboard
         </a>
       </div>
@@ -523,19 +577,19 @@ export function ListingForm({
   return (
     <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-5">
       {restoredFromLocalDraft ? (
-        <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
+        <p className="rounded-[var(--u2c-radius-control)] border border-u2c-line bg-u2c-tile p-3 text-[14px] text-u2c-ink">
           Restored your unsaved draft from this browser.
         </p>
       ) : null}
 
       <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">Category</span>
+        <span className={fieldLabelClass}>Category</span>
         <select
           value={categorySlug}
           onChange={(e) => handleCategoryChange(e.target.value)}
           required
           disabled={isPublishedEdit}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900"
+          className={`${selectClass} disabled:opacity-60`}
         >
           <option value="" disabled>
             Select a category
@@ -547,12 +601,12 @@ export function ListingForm({
           ))}
         </select>
         {isPublishedEdit ? (
-          <span className="text-xs text-zinc-500">Locked once published. Remove and relist to change it.</span>
+          <span className="text-[13px] text-u2c-ink-soft">Locked once published. Remove and relist to change it.</span>
         ) : null}
       </label>
 
       {selectedCategory && !selectedCategory.browsable ? (
-        <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+        <p className="rounded-[var(--u2c-radius-control)] border border-u2c-line bg-u2c-tile p-3 text-[14px] text-u2c-ink">
           {FOUNDING_SELLER_NOTICE}
         </p>
       ) : null}
@@ -560,7 +614,7 @@ export function ListingForm({
       {selectedCategory ? (
         <>
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Title</span>
+            <span className={fieldLabelClass}>Title</span>
             <input
               type="text"
               value={title}
@@ -568,25 +622,27 @@ export function ListingForm({
               minLength={5}
               maxLength={90}
               required
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              placeholder="What are you selling?"
+              className={inputBaseClass}
             />
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Description</span>
+            <span className={fieldLabelClass}>
+              Description <span className={fieldHintClass}>(optional)</span>
+            </span>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              minLength={20}
               maxLength={1500}
               rows={4}
-              required
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              placeholder="Tell buyers a bit about it. A few honest sentences go a long way."
+              className={textareaClass}
             />
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Price (₦)</span>
+            <span className={fieldLabelClass}>Price (₦)</span>
             <input
               type="number"
               value={priceNaira}
@@ -595,23 +651,23 @@ export function ListingForm({
               max={5000000}
               required
               disabled={isPublishedEdit}
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900"
+              className={`${inputBaseClass} disabled:opacity-60`}
             />
             {isPublishedEdit ? (
-              <span className="text-xs text-zinc-500">
+              <span className="text-[13px] text-u2c-ink-soft">
                 Locked at {formatKobo(existingListing.priceKobo)} once published. Remove and relist to change it.
               </span>
             ) : null}
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Condition</span>
+            <span className={fieldLabelClass}>Condition</span>
             <select
               value={condition}
               onChange={(e) => setCondition(e.target.value)}
               required
               disabled={isPublishedEdit}
-              className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900"
+              className={`${selectClass} disabled:opacity-60`}
             >
               <option value="" disabled>
                 Select condition
@@ -623,25 +679,66 @@ export function ListingForm({
               ))}
             </select>
             {isPublishedEdit ? (
-              <span className="text-xs text-zinc-500">Locked once published. Remove and relist to change it.</span>
+              <span className="text-[13px] text-u2c-ink-soft">Locked once published. Remove and relist to change it.</span>
             ) : null}
           </label>
 
-          {condition === "used" ? (
-            <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium">Condition notes *</span>
-              <textarea
-                value={conditionNotes}
-                onChange={(e) => setConditionNotes(e.target.value)}
-                minLength={20}
-                maxLength={1000}
-                rows={3}
-                required
-                placeholder="Describe the extent of use — this is what buyers rely on with no chat channel."
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-              />
+          <label className="flex flex-col gap-1.5">
+            <span className={fieldLabelClass}>
+              Reason for selling <span className={fieldHintClass}>(optional)</span>
+            </span>
+            <input
+              type="text"
+              value={reasonForSelling}
+              onChange={(e) => setReasonForSelling(e.target.value)}
+              maxLength={500}
+              placeholder="e.g. no longer my size, upgrading, decluttering"
+              className={inputBaseClass}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className={fieldLabelClass}>
+              Times worn or used <span className={fieldHintClass}>(optional)</span>
+            </span>
+            <input
+              type="text"
+              value={timesUsed}
+              onChange={(e) => setTimesUsed(e.target.value)}
+              maxLength={100}
+              placeholder="e.g. twice, a handful of times, daily for a month"
+              className={inputBaseClass}
+            />
+          </label>
+
+          <div className="flex flex-col gap-3 rounded-[var(--u2c-radius-card)] border border-u2c-line bg-u2c-surface p-4">
+            <label className="flex items-center gap-2 text-[14px] font-semibold text-u2c-ink">
+              <input type="checkbox" checked={hasFlaws} onChange={(e) => setHasFlaws(e.target.checked)} />
+              Does this item have any flaws?
             </label>
-          ) : null}
+            {hasFlaws ? (
+              <div className="flex flex-col gap-4 border-t border-u2c-line pt-4">
+                <label className="flex flex-col gap-1.5">
+                  <span className={fieldLabelClass}>
+                    Describe the flaw <span className={fieldHintClass}>(optional)</span>
+                  </span>
+                  <textarea
+                    value={conditionNotes}
+                    onChange={(e) => setConditionNotes(e.target.value)}
+                    maxLength={1000}
+                    rows={2}
+                    placeholder="e.g. small scratch on the side, light fading on the strap"
+                    className={textareaClass}
+                  />
+                </label>
+                {photos.length > 0 ? (
+                  <p className="text-[13px] text-u2c-ink-soft">
+                    Optionally tag a photo below as showing the flaw.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
 
           {requiredAttributeFields.map((field) => (
             <AttributeFieldInput
@@ -654,16 +751,16 @@ export function ListingForm({
 
           {optionalAttributeFields.length > 0 ? (
             <details
-              className="rounded-md border border-zinc-200 dark:border-zinc-800"
+              className="rounded-[var(--u2c-radius-card)] border border-u2c-line"
               open={optionalAttributeFields.some((field) => {
                 const value = attributeValues[field.name];
                 return value !== undefined && value !== null && value !== "";
               })}
             >
-              <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <summary className="cursor-pointer select-none px-3 py-2.5 text-[13px] font-bold text-u2c-ink">
                 Add more details (optional)
               </summary>
-              <div className="flex flex-col gap-4 border-t border-zinc-200 p-3 dark:border-zinc-800">
+              <div className="flex flex-col gap-4 border-t border-u2c-line p-3">
                 {optionalAttributeFields.map((field) => (
                   <AttributeFieldInput
                     key={field.name}
@@ -676,62 +773,87 @@ export function ListingForm({
             </details>
           ) : null}
 
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">
-              Photos ({selectedCategory.minPhotos} to {selectedCategory.maxPhotos})
-              {condition === "used" ? " — tag at least one as wear evidence" : ""}
+          <div className="flex flex-col gap-2">
+            <span className={fieldLabelClass}>
+              Photos <span className={fieldHintClass}>({selectedCategory.minPhotos} to {selectedCategory.maxPhotos})</span>
             </span>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              onChange={(e) => e.target.files && handlePhotoSelect(e.target.files)}
-              disabled={photos.length >= selectedCategory.maxPhotos}
-            />
-            <div className="mt-2 flex flex-wrap gap-3">
-              {photos.map((photo, index) => (
-                <div key={photo.id} className="flex w-28 flex-col gap-1">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- local blob/object URL or already-hosted photo preview */}
-                  <img src={photo.previewUrl} alt="" className="h-28 w-28 rounded-md object-cover" />
-                  {photo.uploading ? (
-                    <span className="text-xs text-zinc-500">Uploading…</span>
-                  ) : photo.error ? (
-                    <span className="text-xs text-red-600">{photo.error}</span>
-                  ) : condition === "used" ? (
-                    <label className="flex items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={flawPhotoIndexes.includes(index)}
-                        onChange={() => toggleFlawPhoto(index)}
-                      />
-                      Wear evidence
-                    </label>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => removePhoto(photo.id)}
-                    className="text-xs text-zinc-500 underline"
+
+            {photos.length < selectedCategory.maxPhotos ? (
+              <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--u2c-radius-card)] border-2 border-dashed border-u2c-line bg-u2c-tile px-6 py-10 text-center transition-colors duration-150 hover:border-u2c-primary">
+                <Upload size={24} strokeWidth={1.75} className="text-u2c-ink-soft" aria-hidden />
+                <span className="text-[15px] font-semibold text-u2c-ink">Tap to upload photos</span>
+                <span className="text-[13px] text-u2c-ink-soft">One photo is enough to get started.</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  onChange={(e) => e.target.files && handlePhotoSelect(e.target.files)}
+                  className="sr-only"
+                />
+              </label>
+            ) : null}
+
+            {photos.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-3">
+                {photos.map((photo, index) => (
+                  <div
+                    key={photo.id}
+                    className="relative flex w-28 flex-col gap-1 rounded-[var(--u2c-radius-card)] border border-u2c-line bg-u2c-surface p-1.5"
                   >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
+                    <div className="relative h-24 w-full overflow-hidden rounded-[var(--u2c-radius-control)] bg-u2c-tile">
+                      <Image src={photo.previewUrl} alt="" fill unoptimized className="object-cover" />
+                    </div>
+                    {photo.uploading ? (
+                      <span className="text-[12px] text-u2c-ink-soft">Uploading…</span>
+                    ) : photo.error ? (
+                      <span className="text-[12px] text-u2c-error">{photo.error}</span>
+                    ) : hasFlaws ? (
+                      <label className="flex items-center gap-1 text-[12px] text-u2c-ink">
+                        <input
+                          type="checkbox"
+                          checked={flawPhotoIndexes.includes(index)}
+                          onChange={() => toggleFlawPhoto(index)}
+                        />
+                        Shows the flaw
+                      </label>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(photo.id)}
+                      aria-label="Remove photo"
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-u2c-ink text-white"
+                    >
+                      <X size={12} strokeWidth={2} aria-hidden />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           {submitError ? (
-            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+            <p className="text-[14px] text-u2c-error" role="alert">
               {submitError}
             </p>
           ) : null}
 
           <div className="mt-2 flex gap-3">
             {!isPublishedEdit ? (
-              <Button type="submit" value="draft" variant="outline" disabled={submitting !== null}>
+              <button
+                type="submit"
+                value="draft"
+                disabled={submitting !== null}
+                className="h-11 rounded-[var(--u2c-radius-control)] border-[1.5px] border-u2c-ink px-6 text-[13px] font-bold uppercase tracking-[0.03em] text-u2c-ink transition-colors duration-150 hover:bg-u2c-ink hover:text-white disabled:opacity-60"
+              >
                 {submitting === "draft" ? "Saving…" : "Save as draft"}
-              </Button>
+              </button>
             ) : null}
-            <Button type="submit" value="publish" disabled={submitting !== null}>
+            <button
+              type="submit"
+              value="publish"
+              disabled={submitting !== null}
+              className="h-11 rounded-[var(--u2c-radius-control)] bg-u2c-primary px-6 text-[13px] font-bold uppercase tracking-[0.03em] text-white transition-colors duration-150 hover:bg-u2c-primary-press disabled:opacity-60"
+            >
               {submitting === "publish"
                 ? isPublishedEdit
                   ? "Saving…"
@@ -739,7 +861,7 @@ export function ListingForm({
                 : isPublishedEdit
                   ? "Save changes"
                   : "Publish listing"}
-            </Button>
+            </button>
           </div>
         </>
       ) : null}

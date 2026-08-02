@@ -55,7 +55,10 @@ const beautyBaseSchema = z
     shade: z.string().trim().max(60).optional(),
     size_value: z.number().positive().optional(),
     size_unit: z.enum(["ml", "g", "oz"]).optional(),
-    expiry_date: z.coerce.date(),
+    // Design/UX pass (2026-08-07): deliberately optional — the form asks
+    // "Does it have an expiry date?" first and only shows this field on
+    // "yes". Still validated (>=90 days out) whenever it is supplied.
+    expiry_date: z.coerce.date().optional(),
     fill_level_percent: z.number().int().min(0).max(100).optional(),
     pao_months: z.enum(PAO_MONTHS).optional(),
     opened_at_date: z.coerce.date().optional(),
@@ -73,8 +76,10 @@ export const beautyAttributesSchema = beautyBaseSchema.superRefine((data, ctx) =
     });
   }
 
-  // §6.4.1 HARD RULE: expiry_date must be a future date, minimum 90 days out.
-  if (data.expiry_date.getTime() < daysFromNow(90).getTime()) {
+  // §6.4.1: expiry_date must be a future date, minimum 90 days out, whenever
+  // it's supplied — deliberately no longer required (design/UX pass,
+  // 2026-08-07).
+  if (data.expiry_date !== undefined && data.expiry_date.getTime() < daysFromNow(90).getTime()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["expiry_date"],

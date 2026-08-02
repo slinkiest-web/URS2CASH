@@ -78,7 +78,7 @@ export async function createListing(input: CreateListingInput): Promise<Result<{
   // but the resulting moderation_flags row/event only fire below, after the
   // insert succeeds (flagContactDetection needs the new listing's id).
   const contactDetection = scanForContactDetails(
-    `${data.title} ${data.description} ${data.conditionNotes ?? ""}`
+    `${data.title} ${data.description} ${data.conditionNotes ?? ""} ${data.reasonForSelling ?? ""} ${data.timesUsed ?? ""}`
   );
 
   const { data: categoryRow } = await supabase
@@ -103,6 +103,8 @@ export async function createListing(input: CreateListingInput): Promise<Result<{
       price_kobo: data.priceKobo,
       condition: data.condition,
       condition_notes: data.conditionNotes,
+      reason_for_selling: data.reasonForSelling,
+      times_used: data.timesUsed,
       status,
       attributes: data.attributes as Json, // Zod-validated, JSON-safe by construction
       attribute_schema_version: data.categoryConfig.schemaVersion,
@@ -169,6 +171,8 @@ export type UpdateListingInput = {
   /** Rejected server-side if the listing is already published (§11.2 HARD RULE). */
   categorySlug?: string;
   conditionNotes?: string;
+  reasonForSelling?: string;
+  timesUsed?: string;
   attributes?: Record<string, unknown>;
   photoUrls?: string[];
   flawPhotoIndexes?: number[];
@@ -243,6 +247,8 @@ export async function updateListing(input: UpdateListingInput): Promise<Result<v
     priceKobo: input.priceKobo ?? listing.price_kobo,
     condition: input.condition ?? listing.condition,
     conditionNotes: input.conditionNotes ?? listing.condition_notes ?? undefined,
+    reasonForSelling: input.reasonForSelling ?? listing.reason_for_selling ?? undefined,
+    timesUsed: input.timesUsed ?? listing.times_used ?? undefined,
     attributes: input.attributes ?? (listing.attributes as Record<string, unknown>),
     photoUrls: input.photoUrls ?? listing.photo_urls,
     flawPhotoIndexes: input.flawPhotoIndexes ?? listing.flaw_photo_indexes,
@@ -260,7 +266,7 @@ export async function updateListing(input: UpdateListingInput): Promise<Result<v
   // repeat detection across edits is itself a legitimate signal (§9.3 point
   // 5 — "suspends the listing on repeat offence").
   const contactDetection = scanForContactDetails(
-    `${data.title} ${data.description} ${data.conditionNotes ?? ""}`
+    `${data.title} ${data.description} ${data.conditionNotes ?? ""} ${data.reasonForSelling ?? ""} ${data.timesUsed ?? ""}`
   );
 
   // §5.4: the cap only ever gates an actual publish transition, never an
@@ -304,6 +310,8 @@ export async function updateListing(input: UpdateListingInput): Promise<Result<v
       price_kobo: data.priceKobo,
       condition: data.condition,
       condition_notes: data.conditionNotes,
+      reason_for_selling: data.reasonForSelling,
+      times_used: data.timesUsed,
       attributes: data.attributes as Json,
       attribute_schema_version: data.categoryConfig.schemaVersion,
       photo_urls: data.photoUrls,

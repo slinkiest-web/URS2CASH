@@ -10,10 +10,12 @@ import { buildListingSubmissionSchema } from "@/lib/listings/schema";
 export type ListingSubmissionRaw = {
   categorySlug: string;
   title: string;
-  description: string;
+  description?: string;
   priceKobo: number;
   condition: string;
   conditionNotes?: string;
+  reasonForSelling?: string;
+  timesUsed?: string;
   /** Category-specific fields only — `condition` is supplied separately above. */
   attributes: Record<string, unknown>;
   photoUrls: string[];
@@ -27,6 +29,8 @@ export type ValidatedListingSubmission = {
   priceKobo: number;
   condition: string;
   conditionNotes: string | null;
+  reasonForSelling: string | null;
+  timesUsed: string | null;
   photoUrls: string[];
   flawPhotoIndexes: number[];
   /** condition already stripped out — category attrs only. */
@@ -56,6 +60,8 @@ export function validateListingSubmission(raw: ListingSubmissionRaw): ListingVal
     priceKobo: raw.priceKobo,
     condition: raw.condition,
     conditionNotes: raw.conditionNotes,
+    reasonForSelling: raw.reasonForSelling,
+    timesUsed: raw.timesUsed,
     photoUrls: raw.photoUrls,
     flawPhotoIndexes: raw.flawPhotoIndexes ?? [],
   });
@@ -96,6 +102,8 @@ export function validateListingSubmission(raw: ListingSubmissionRaw): ListingVal
       priceKobo: listingParsed.data.priceKobo,
       condition: condition as string, // each category schema types `condition` as a string enum
       conditionNotes: listingParsed.data.conditionNotes ?? null,
+      reasonForSelling: listingParsed.data.reasonForSelling ?? null,
+      timesUsed: listingParsed.data.timesUsed ?? null,
       photoUrls: listingParsed.data.photoUrls,
       flawPhotoIndexes: listingParsed.data.flawPhotoIndexes,
       attributes,
