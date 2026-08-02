@@ -6,35 +6,31 @@
 
 /*
  * urs2cash-ui design system tokens (.agents/skills/urs2cash-ui/SKILL.md),
- * Revision 3 — Elegant Burgundy, a resale-boutique register (Fashionphile/
- * The RealReal), replacing revision 2's bold Ulta/ALDO-style direction,
- * which read as cheap and loud in practice. Prefixed `u2c-` and kept
- * separate from the shadcn tokens above/below (--background, --accent,
- * --primary, etc.) on purpose: those are still load-bearing for every
- * surface this design pass hasn't reached yet. Reusing e.g. `--accent` here
- * would silently recolour every existing shadcn `bg-accent`/`text-accent`
- * usage across the whole app in one shot, which is exactly what "one
- * surface at a time" rules out. As more surfaces migrate, the shadcn tokens
- * can eventually be retired in favour of these.
+ * Revision 4 — Editorial Market, an ASOS-inspired clean/high-contrast/
+ * photo-led register, replacing revision 3's warm resale-boutique palette.
+ * Prefixed `u2c-` and kept separate from the shadcn tokens above/below
+ * (--background, --accent, --primary, etc.) on purpose: those are still
+ * load-bearing for every surface this design pass hasn't reached yet.
+ * Reusing e.g. `--accent` here would silently recolour every existing
+ * shadcn `bg-accent`/`text-accent` usage across the whole app in one shot,
+ * which is exactly what "one surface at a time" rules out. As more surfaces
+ * migrate, the shadcn tokens can eventually be retired in favour of these.
  */
 :root {
-  --u2c-canvas: #faf6f1;
+  --u2c-canvas: #fafafa;
   --u2c-surface: #ffffff;
-  --u2c-cream: #f3eae0;
-  --u2c-ink: #2a2320;
-  --u2c-ink-soft: #7a6f67;
-  --u2c-line: #e7ddd2;
+  --u2c-tile: #f0efec;
+  --u2c-ink: #111111;
+  --u2c-ink-soft: #6b6b6b;
+  --u2c-line: #e4e4e4;
   --u2c-primary: #6b1f2a;
   --u2c-primary-press: #551723;
-  --u2c-gold: #a6813c;
-  --u2c-gold-soft: #f3e9d2;
   --u2c-focus: #6b1f2a;
   --u2c-error: #a13d2b;
 
-  --u2c-radius-card: 10px;
-  --u2c-radius-control: 8px;
-  --u2c-shadow-rest: 0 1px 2px rgba(42, 35, 32, 0.06);
-  --u2c-shadow-hover: 0 10px 24px rgba(42, 35, 32, 0.12);
+  --u2c-radius-card: 6px;
+  --u2c-radius-control: 4px;
+  --u2c-shadow-hover: 0 12px 24px rgba(17, 17, 17, 0.12);
 
   --u2c-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --u2c-dur-fast: 150ms;
@@ -45,17 +41,15 @@
 @theme inline {
   --color-u2c-canvas: var(--u2c-canvas);
   --color-u2c-surface: var(--u2c-surface);
-  --color-u2c-cream: var(--u2c-cream);
+  --color-u2c-tile: var(--u2c-tile);
   --color-u2c-ink: var(--u2c-ink);
   --color-u2c-ink-soft: var(--u2c-ink-soft);
   --color-u2c-line: var(--u2c-line);
   --color-u2c-primary: var(--u2c-primary);
   --color-u2c-primary-press: var(--u2c-primary-press);
-  --color-u2c-gold: var(--u2c-gold);
-  --color-u2c-gold-soft: var(--u2c-gold-soft);
   --color-u2c-focus: var(--u2c-focus);
   --color-u2c-error: var(--u2c-error);
-  --font-display: var(--font-fraunces);
+  --font-display: var(--font-archivo);
   --font-body: var(--font-inter);
   --color-background: var(--background);
   --color-foreground: var(--foreground);

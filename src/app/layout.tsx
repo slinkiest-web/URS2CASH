@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Fraunces, Inter } from "next/font/google";
+import { Geist, Geist_Mono, Archivo, Inter } from "next/font/google";
 import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 import { PostHogProvider } from "@/components/analytics/posthog-provider";
 import "./globals.css";
 
@@ -15,16 +16,16 @@ const geistMono = Geist_Mono({
 });
 
 /**
- * urs2cash-ui skill, Typography (Revision 3, Elegant Burgundy): a warm,
- * high-contrast serif for headings, the resale-boutique register replacing
- * revision 2's bold rounded sans. `preload: false` per the skill's "never
+ * urs2cash-ui skill, Typography (Revision 4, Editorial Market): a bold,
+ * wide, confident grotesk for headings, the ASOS-inspired register
+ * replacing revision 3's serif. `preload: false` per the skill's "never
  * block first paint on the display face" — only the body face (Inter)
  * preloads.
  */
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
-  weight: ["500", "600"],
+  weight: ["700", "800", "900"],
   display: "swap",
   preload: false,
 });
@@ -49,12 +50,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} ${inter.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${archivo.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <PostHogProvider>
           <SiteHeader />
           {children}
+          <SiteFooter />
         </PostHogProvider>
       </body>
     </html>
