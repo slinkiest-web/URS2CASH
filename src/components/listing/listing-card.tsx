@@ -20,17 +20,19 @@ export type ListingCardData = {
    */
   secondPhotoUrl?: string | null;
   /**
-   * urs2cash-ui skill, product card spec: "SELLER" meta row. No verified
-   * tick is ever rendered here — this app has no seller-verification concept
-   * (PRD §15 B2 / DoD item 11e), and the skill itself says a trust signal
-   * that isn't real must not render.
+   * urs2cash-ui skill, product card spec: the seller + location meta row.
+   * No verified tick is ever rendered here — this app has no
+   * seller-verification concept (PRD §15 B2 / DoD item 11e), and the skill
+   * itself says a trust signal that isn't real must not render.
    */
   sellerHandle?: string;
+  /** Seller's `profiles.state` (public column) — the "location" half of the meta row. */
+  sellerLocation?: string | null;
 };
 
 const CONDITION_LABELS: Record<string, string> = {
-  brand_new: "Brand New",
-  opened_unused: "Opened but Unused",
+  brand_new: "Brand new",
+  opened_unused: "Opened, unused",
   used: "Used",
 };
 
@@ -62,12 +64,20 @@ export function ListingCard({ listing }: { listing: ListingCardData }) {
     isAllowedImageUrl(listing.secondPhotoUrl) &&
     listing.secondPhotoUrl !== listing.photoUrl;
 
+  const metaLine = [
+    listing.sellerHandle ? `@${listing.sellerHandle}` : null,
+    listing.sellerLocation,
+    listing.categoryName,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <Link
       href={`/l/${listing.id}`}
-      className="group flex flex-col overflow-hidden rounded-[var(--u2c-radius-card)] bg-u2c-surface shadow-[var(--u2c-shadow-rest)] transition-[transform,box-shadow] duration-[220ms] ease-out hover:-translate-y-[2px] hover:shadow-[var(--u2c-shadow-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-u2c-focus motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="group flex flex-col overflow-hidden rounded-[var(--u2c-radius-card)] bg-u2c-surface transition-[transform,box-shadow] duration-[220ms] ease-out hover:-translate-y-[2px] hover:shadow-[var(--u2c-shadow-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-u2c-focus motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
-      <div className="relative aspect-[4/5] w-full overflow-hidden bg-u2c-cream">
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-u2c-tile">
         {showPhoto ? (
           <>
             <Image
@@ -101,27 +111,19 @@ export function ListingCard({ listing }: { listing: ListingCardData }) {
             <ImageOff size={28} strokeWidth={1.5} className="text-u2c-ink-soft opacity-40" aria-hidden />
           </div>
         )}
-      </div>
-      <div className="flex flex-1 flex-col gap-1 border-t border-u2c-line p-3">
-        {listing.sellerHandle || listing.categoryName ? (
-          <span className="text-[13px] font-medium tracking-[0.01em] text-u2c-ink-soft">
-            {/* PRD §10 Epic C2 AC3: "Results show the category name on each
-                result" — required on every cross-category grid, never
-                dropped just because a seller handle is also shown. */}
-            {[listing.sellerHandle ? `@${listing.sellerHandle}` : null, listing.categoryName]
-              .filter(Boolean)
-              .join(" · ")}
-          </span>
-        ) : null}
-        <h3 className="line-clamp-2 text-[15px] font-medium text-u2c-ink">{listing.title}</h3>
-        {/* urs2cash-ui skill: price is small and calm, Inter not the
-            display serif, semibold not black, never the loudest thing
-            on the card. */}
-        <span className="mt-1 text-[1.0625rem] font-semibold text-u2c-primary">
-          {formatKobo(listing.priceKobo)}
-        </span>
-        <span className="text-[13px] tracking-[0.01em] text-u2c-ink-soft">
+        <span className="absolute left-2 top-2 rounded-[3px] bg-white/95 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-u2c-ink">
           {CONDITION_LABELS[listing.condition] ?? listing.condition}
+        </span>
+      </div>
+      <div className="flex flex-1 flex-col gap-1 p-3">
+        {metaLine ? (
+          <span className="truncate text-[13px] text-u2c-ink-soft">{metaLine}</span>
+        ) : null}
+        <h3 className="line-clamp-2 text-[15px] font-medium leading-snug text-u2c-ink">{listing.title}</h3>
+        {/* urs2cash-ui skill: price is small and calm, never the loudest
+            thing on the card. */}
+        <span className="mt-0.5 text-[1.0625rem] font-semibold text-u2c-primary">
+          {formatKobo(listing.priceKobo)}
         </span>
       </div>
     </Link>

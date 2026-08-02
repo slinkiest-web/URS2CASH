@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Search, User, Tag, List, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBrowsableCategories } from "@/lib/discovery/queries";
 import { signOutAction } from "@/lib/actions/auth";
@@ -8,17 +8,16 @@ import { signOutAction } from "@/lib/actions/auth";
  * Server Component — no client interactivity needed for nav links, the
  * sign-out form, or a GET-method search form.
  *
+ * urs2cash-ui skill, Header spec (Revision 4): two-tier, a black main bar
+ * (wordmark, search, real account-area actions only) plus a white category
+ * bar. Sell is the one burgundy touch in the header, everything else in the
+ * main bar stays white/ink, matching "burgundy is sparing."
+ *
  * PRD §6.2 HARD RULE: category navigation shows only `browsable = true`
  * categories. §10 Epic C2 HARD RULE: the search form itself must never
  * filter by `browsable` — it just submits `q` to `/search`, which reads
  * from `searchListings` (src/lib/discovery/search.ts), a function that has
  * no `browsable` concept at all.
- *
- * Auth entry points: signed-out visitors get Sign in / Sign up; signed-in
- * users get Sell, My listings, Account (-> /dashboard/profile), and Sign
- * out. This is purely a discoverability affordance — every protected route
- * these links lead to (§middleware.ts PROTECTED_PREFIXES) already
- * re-checks the session itself.
  *
  * Admin entry point: the Admin link only renders for a signed-in user whose
  * own `profiles.is_admin` row is true, read via the caller's own RLS-scoped
@@ -44,25 +43,17 @@ export async function SiteHeader() {
   const categories = await getBrowsableCategories(supabase);
 
   return (
-    <header className="border-b border-u2c-line bg-u2c-surface">
-      <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="font-display text-xl font-medium text-u2c-ink">
+    <header>
+      <div className="bg-u2c-ink">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-6 sm:px-6 lg:px-12">
+          <Link href="/" className="font-display shrink-0 text-xl font-extrabold tracking-tight text-white">
             Urs2Cash
           </Link>
-          <nav className="flex items-center gap-4 text-[15px] text-u2c-ink-soft">
-            {categories.map((category) => (
-              <Link key={category.slug} href={`/c/${category.slug}`} className="hover:text-u2c-ink">
-                {category.displayName}
-              </Link>
-            ))}
-          </nav>
-        </div>
-        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-          <form action="/search" method="GET" className="relative w-full max-w-sm">
+
+          <form action="/search" method="GET" className="relative flex-1">
             <Search
-              size={16}
-              strokeWidth={1.5}
+              size={18}
+              strokeWidth={1.75}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-u2c-ink-soft"
               aria-hidden
             />
@@ -70,43 +61,48 @@ export async function SiteHeader() {
               type="search"
               name="q"
               placeholder="Search listings"
-              className="w-full rounded-[var(--u2c-radius-control)] border border-u2c-line bg-u2c-canvas py-1.5 pl-9 pr-3 text-[15px] text-u2c-ink outline-none placeholder:text-u2c-ink-soft focus:border-u2c-focus focus:ring-2 focus:ring-u2c-focus/20"
+              className="h-11 w-full rounded-[var(--u2c-radius-control)] border-0 bg-white py-1.5 pl-10 pr-3 text-[15px] text-u2c-ink outline-none placeholder:text-u2c-ink-soft focus:ring-2 focus:ring-white/60"
             />
           </form>
-          <nav className="flex items-center gap-4 text-[15px] text-u2c-ink-soft">
+
+          <nav className="flex shrink-0 items-center gap-4 text-[13px] font-bold uppercase tracking-[0.03em] text-white/80">
             {isAdmin ? (
-              <Link href="/admin" className="font-medium hover:text-u2c-ink">
-                Admin
+              <Link href="/admin" className="flex items-center gap-1.5 hover:text-white">
+                <ShieldCheck size={18} strokeWidth={1.75} aria-hidden />
+                <span className="hidden sm:inline">Admin</span>
               </Link>
             ) : null}
             {user ? (
               <>
                 <Link
                   href="/sell"
-                  className="rounded-[var(--u2c-radius-control)] bg-u2c-primary px-3 py-1.5 text-[15px] font-semibold text-white transition-colors duration-150 hover:bg-u2c-primary-press"
+                  className="flex h-9 items-center gap-1.5 rounded-[var(--u2c-radius-control)] bg-u2c-primary px-3 text-white transition-colors duration-150 hover:bg-u2c-primary-press"
                 >
+                  <Tag size={16} strokeWidth={1.75} aria-hidden />
                   Sell
                 </Link>
-                <Link href="/dashboard/listings" className="hover:text-u2c-ink">
-                  My listings
+                <Link href="/dashboard/listings" className="flex items-center gap-1.5 hover:text-white">
+                  <List size={18} strokeWidth={1.75} aria-hidden />
+                  <span className="hidden sm:inline">My listings</span>
                 </Link>
-                <Link href="/dashboard/profile" className="hover:text-u2c-ink">
-                  Account
+                <Link href="/dashboard/profile" className="flex items-center gap-1.5 hover:text-white">
+                  <User size={18} strokeWidth={1.75} aria-hidden />
+                  <span className="hidden sm:inline">Account</span>
                 </Link>
                 <form action={signOutAction}>
-                  <button type="submit" className="hover:text-u2c-ink">
+                  <button type="submit" className="hover:text-white">
                     Sign out
                   </button>
                 </form>
               </>
             ) : (
               <>
-                <Link href="/sign-in" className="hover:text-u2c-ink">
+                <Link href="/sign-in" className="hover:text-white">
                   Sign in
                 </Link>
                 <Link
                   href="/sign-up"
-                  className="rounded-[var(--u2c-radius-control)] bg-u2c-ink px-3 py-1.5 text-[15px] font-medium text-white hover:bg-u2c-primary"
+                  className="flex h-9 items-center rounded-[var(--u2c-radius-control)] bg-white px-3 text-u2c-ink transition-colors duration-150 hover:bg-white/90"
                 >
                   Sign up
                 </Link>
@@ -114,6 +110,20 @@ export async function SiteHeader() {
             )}
           </nav>
         </div>
+      </div>
+
+      <div className="border-b border-u2c-line bg-u2c-surface">
+        <nav className="mx-auto flex w-full max-w-6xl items-center gap-6 px-4 py-3 text-[13px] font-bold uppercase tracking-[0.03em] text-u2c-ink sm:px-6 lg:px-12">
+          {categories.map((category) => (
+            <Link
+              key={category.slug}
+              href={`/c/${category.slug}`}
+              className="border-b-2 border-transparent pb-0.5 hover:border-u2c-primary"
+            >
+              {category.displayName}
+            </Link>
+          ))}
+        </nav>
       </div>
     </header>
   );

@@ -25,7 +25,7 @@ function isCategorySlug(value: string): value is CategorySlug {
 function toCardData(
   listing: Pick<ListingRow, "id" | "title" | "price_kobo" | "condition" | "photo_urls">,
   categoryName?: string,
-  sellerHandle?: string
+  seller?: SellerInfo
 ): ListingCardData {
   return {
     id: listing.id,
@@ -35,11 +35,12 @@ function toCardData(
     photoUrl: listing.photo_urls[0] ?? null,
     secondPhotoUrl: listing.photo_urls[1] ?? null,
     categoryName,
-    sellerHandle,
+    sellerHandle: seller?.handle,
+    sellerLocation: seller?.state ?? null,
   };
 }
 
-export type NavCategory = { slug: CategorySlug; displayName: string };
+export type NavCategory = { id: string; slug: CategorySlug; displayName: string };
 
 /**
  * PRD §10 Epic C1 AC1 / §6.2: category grid and navigation render only
@@ -53,13 +54,44 @@ export type NavCategory = { slug: CategorySlug; displayName: string };
 export async function getBrowsableCategories(supabase: Client): Promise<NavCategory[]> {
   const { data } = await supabase
     .from("categories")
-    .select("slug, sort_order")
+    .select("id, slug, sort_order")
     .eq("browsable", true)
     .order("sort_order", { ascending: true });
 
   return (data ?? [])
     .filter((row) => isCategorySlug(row.slug))
-    .map((row) => ({ slug: row.slug as CategorySlug, displayName: categoryRegistry[row.slug as CategorySlug].displayName }));
+    .map((row) => ({
+      id: row.id,
+      slug: row.slug as CategorySlug,
+      displayName: categoryRegistry[row.slug as CategorySlug].displayName,
+    }));
+}
+
+export type CategoryShowcaseTile = NavCategory & { photoUrl: string | null };
+
+/**
+ * urs2cash-ui skill, Category showcase tile spec (Revision 4): the "Shop by
+ * category" grid uses each browsable category's own most-recently-published
+ * listing photo, real photography only (non-negotiable #2), never a fake
+ * campaign image. A category with no published listing yet gets `photoUrl:
+ * null`, the tile component renders its own flat-colour fallback for that
+ * case. Browsable-gated because this section IS the category grid (§6.2).
+ */
+export async function getCategoryShowcase(supabase: Client, categories: NavCategory[]): Promise<CategoryShowcaseTile[]> {
+  return Promise.all(
+    categories.map(async (category) => {
+      const { data } = await supabase
+        .from("listings")
+        .select("photo_urls")
+        .eq("category_id", category.id)
+        .eq("status", "published")
+        .order("published_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      return { ...category, photoUrl: data?.photo_urls[0] ?? null };
+    })
+  );
 }
 
 export type CategoryPageInfo = {
@@ -109,14 +141,12 @@ export async function getRecentlyListed(supabase: Client, limit = 8): Promise<Li
 
   if (!data || data.length === 0) return [];
 
-  const [categoryNames, sellerHandles] = await Promise.all([
+  const [categoryNames, sellerInfo] = await Promise.all([
     getCategoryNames(supabase, Array.from(new Set(data.map((row) => row.category_id)))),
-    getSellerHandles(supabase, Array.from(new Set(data.map((row) => row.seller_id)))),
+    getSellerInfo(supabase, Array.from(new Set(data.map((row) => row.seller_id)))),
   ]);
 
-  return data.map((row) =>
-    toCardData(row, categoryNames.get(row.category_id), sellerHandles.get(row.seller_id))
-  );
+  return data.map((row) => toCardData(row, categoryNames.get(row.category_id), sellerInfo.get(row.seller_id)));
 }
 
 async function getCategoryNames(supabase: Client, categoryIds: string[]): Promise<Map<string, string>> {
@@ -133,21 +163,25 @@ async function getCategoryNames(supabase: Client, categoryIds: string[]): Promis
   return map;
 }
 
+export type SellerInfo = { handle: string; state: string | null };
+
 /**
- * urs2cash-ui skill, product card spec: the "SELLER" meta row. Reads from
- * `profiles_public` (never the base `profiles` table) — the same
+ * urs2cash-ui skill, product card spec: the seller + location meta row.
+ * Reads from `profiles_public` (never the base `profiles` table) — the same
  * public/private column split this codebase already uses everywhere else a
  * seller identity surfaces to a buyer (Decision: public-column-privacy
- * pattern, PROJECT_STATUS.md §4).
+ * pattern, PROJECT_STATUS.md §4). `state` is already a public column on
+ * this view (Epic C4's seller profile header already shows it), so this is
+ * the same data, not a new privacy surface.
  */
-async function getSellerHandles(supabase: Client, sellerIds: string[]): Promise<Map<string, string>> {
+async function getSellerInfo(supabase: Client, sellerIds: string[]): Promise<Map<string, SellerInfo>> {
   if (sellerIds.length === 0) return new Map();
 
-  const { data } = await supabase.from("profiles_public").select("id, handle").in("id", sellerIds);
+  const { data } = await supabase.from("profiles_public").select("id, handle, state").in("id", sellerIds);
 
-  const map = new Map<string, string>();
+  const map = new Map<string, SellerInfo>();
   for (const row of data ?? []) {
-    if (row.id && row.handle) map.set(row.id, row.handle);
+    if (row.id && row.handle) map.set(row.id, { handle: row.handle, state: row.state });
   }
   return map;
 }
@@ -200,7 +234,7 @@ export async function getCategoryListings(
 
   let query = supabase
     .from("listings")
-    .select("id, title, price_kobo, condition, photo_urls")
+    .select("id, title, price_kobo, condition, photo_urls, seller_id")
     .eq("category_id", categoryId)
     .eq("status", "published");
 
@@ -217,7 +251,10 @@ export async function getCategoryListings(
 
   const rows = data ?? [];
   const hasMore = rows.length > PAGE_SIZE;
-  return { items: rows.slice(0, PAGE_SIZE).map((row) => toCardData(row)), hasMore };
+  const pageRows = rows.slice(0, PAGE_SIZE);
+  const sellerInfo = await getSellerInfo(supabase, Array.from(new Set(pageRows.map((row) => row.seller_id))));
+
+  return { items: pageRows.map((row) => toCardData(row, undefined, sellerInfo.get(row.seller_id))), hasMore };
 }
 
 /**
