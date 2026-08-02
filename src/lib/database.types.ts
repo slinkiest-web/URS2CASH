@@ -169,10 +169,6 @@ export type Database = {
           photo_urls: string[]
           price_kobo: number
           published_at: string | null
-          // reason_for_selling/times_used: hand-added 2026-08-07, migration
-          // 20260807090000. Docker was unhealthy in this environment at the
-          // time — regenerate via `supabase gen types` for real once it
-          // recovers, per this file's own "never hand-edit" rule.
           reason_for_selling: string | null
           seller_id: string
           seller_listing_index: number
@@ -1097,12 +1093,14 @@ export type Database = {
           photo_urls: string[]
           price_kobo: number
           published_at: string | null
+          reason_for_selling: string | null
           seller_id: string
           seller_listing_index: number
           status: string
           suspended_at: string | null
           suspended_by: string | null
           suspension_reason: string | null
+          times_used: string | null
           title: string
           updated_at: string
         }[]
@@ -1556,12 +1554,14 @@ export type Database = {
           photo_urls: string[]
           price_kobo: number
           published_at: string | null
+          reason_for_selling: string | null
           seller_id: string
           seller_listing_index: number
           status: string
           suspended_at: string | null
           suspended_by: string | null
           suspension_reason: string | null
+          times_used: string | null
           title: string
           updated_at: string
         }[]
