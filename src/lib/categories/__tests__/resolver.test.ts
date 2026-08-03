@@ -4,13 +4,13 @@ import { categoryRegistry, CATEGORY_SLUGS } from "@/lib/categories/registry";
 import { daysFromNow } from "@/lib/categories/shared";
 
 describe("category registry (PRD §6.4/§6.5)", () => {
-  it("has exactly the six launch category slugs (Gym & Activewear added 2026-08-07)", () => {
+  it("has exactly the five launch category slugs (Gym & Activewear merged into Fashion as its Activewear subcategory, 2026-08-09)", () => {
     expect(new Set(CATEGORY_SLUGS)).toEqual(
-      new Set(["beauty", "fashion", "gadgets", "personal_care", "home_goods", "gym_activewear"])
+      new Set(["beauty", "fashion", "gadgets", "personal_care", "home_goods"])
     );
   });
 
-  it("marks all six categories listable, and beauty/fashion/gym_activewear browsable (Fashion flipped, Gym & Activewear new, 2026-08-07)", () => {
+  it("marks all five categories listable, and beauty/fashion browsable (Fashion flipped 2026-08-07)", () => {
     for (const slug of CATEGORY_SLUGS) {
       expect(categoryRegistry[slug].listable).toBe(true);
     }
@@ -19,7 +19,6 @@ describe("category registry (PRD §6.4/§6.5)", () => {
     expect(categoryRegistry.gadgets.browsable).toBe(false);
     expect(categoryRegistry.personal_care.browsable).toBe(false);
     expect(categoryRegistry.home_goods.browsable).toBe(false);
-    expect(categoryRegistry.gym_activewear.browsable).toBe(true);
   });
 
   it("requires only 1 photo minimum per category — deliberately relaxed below PRD §6.4's original 3-5 range for everyday-seller UX", () => {
@@ -28,17 +27,20 @@ describe("category registry (PRD §6.4/§6.5)", () => {
     expect(categoryRegistry.gadgets.minPhotos).toBe(1);
     expect(categoryRegistry.personal_care.minPhotos).toBe(1);
     expect(categoryRegistry.home_goods.minPhotos).toBe(1);
-    expect(categoryRegistry.gym_activewear.minPhotos).toBe(1);
   });
 
   it("excludes used from personal_care's allowed conditions", () => {
     expect(categoryRegistry.personal_care.allowedConditions).not.toContain("used");
   });
 
-  it("gives beauty and fashion a subcategoryGroups taxonomy, and gym_activewear none (flat product_type, no grouping requested)", () => {
+  it("gives beauty and fashion a subcategoryGroups taxonomy", () => {
     expect(categoryRegistry.beauty.subcategoryGroups).toBeDefined();
     expect(categoryRegistry.fashion.subcategoryGroups).toBeDefined();
-    expect(categoryRegistry.gym_activewear.subcategoryGroups).toBeUndefined();
+  });
+
+  it("ranks Fashion's Activewear group 2nd (top-3 prominence, per explicit instruction 2026-08-09)", () => {
+    const groupKeys = Object.keys(categoryRegistry.fashion.subcategoryGroups ?? {});
+    expect(groupKeys.indexOf("activewear")).toBeLessThan(3);
   });
 });
 
@@ -77,10 +79,11 @@ describe("resolveCategoryAttributes", () => {
     }
   });
 
-  it("resolves valid attributes for the new gym_activewear category", () => {
-    const result = resolveCategoryAttributes("gym_activewear", {
+  it("resolves valid attributes for fashion's Activewear group (former standalone gym_activewear category)", () => {
+    const result = resolveCategoryAttributes("fashion", {
       condition: "brand_new",
-      product_type: "leggings",
+      product_group: "activewear",
+      product_subtype: "leggings",
     });
     expect(result.ok).toBe(true);
   });

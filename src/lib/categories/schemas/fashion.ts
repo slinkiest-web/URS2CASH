@@ -8,7 +8,7 @@ import { z } from "zod";
 import { ALL_CONDITIONS } from "../shared";
 import type { SubcategoryGroups } from "../registry";
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const FASHION_SLUG = "fashion" as const;
 export const FASHION_ALLOWED_CONDITIONS = ALL_CONDITIONS;
@@ -26,12 +26,15 @@ export const FASHION_USAGE_INDICATOR_FIELDS = [] as const;
  * Two-level taxonomy (design/UX pass, 2026-08-07/09). "Outerwear" folded
  * into "Tops" (jackets/coats are now Tops subtypes), "Bottoms" renamed to
  * "Trousers" (kept as the group label per explicit instruction, even
- * though Skirts/Shorts still live under it), and "Traditional" (Nigerian
+ * though Skirts/Shorts still live under it), "Traditional" (Nigerian
  * traditional wear) promoted from a buried Other-subtype to its own
- * top-level group with real subtypes. "Other" stays as a catch-all beyond
- * the requested list so nothing becomes unlistable.
+ * top-level group with real subtypes, and "Activewear" absorbed from the
+ * former standalone Gym & Activewear category — moved here deliberately
+ * ranked 2nd (top-3 prominence). "Other" stays as a catch-all beyond the
+ * requested list so nothing becomes unlistable.
  */
 export const FASHION_GROUPS = [
+  "activewear",
   "tops",
   "dresses",
   "trousers",
@@ -45,6 +48,25 @@ export const FASHION_GROUPS = [
 export type FashionGroup = (typeof FASHION_GROUPS)[number];
 
 export const FASHION_SUBCATEGORY_GROUPS: SubcategoryGroups = {
+  // Absorbed from the former standalone gym_activewear category
+  // (2026-08-09). Two subtype keys were renamed to avoid colliding with
+  // existing Fashion subtype keys: gym's `shorts` -> `gym_shorts` (Trousers
+  // already has a `shorts`), gym's `jacket` -> `track_jacket` (Tops already
+  // has `jackets`). Gym's own `set`/`other` product types don't get
+  // Activewear subtypes at all — they map to the existing top-level
+  // Sets/Other groups instead (see the migration).
+  activewear: {
+    label: "Activewear",
+    subtypes: {
+      leggings: "Leggings",
+      sports_bra: "Sports Bra",
+      gym_shorts: "Shorts",
+      tank_top: "Tank Top",
+      track_jacket: "Track Jacket",
+      tracksuit: "Tracksuit",
+      gym_shoes: "Gym Shoes",
+    },
+  },
   // Absorbs the old Outerwear group's jackets/coats.
   tops: { label: "Tops", subtypes: { shirts: "Shirts", blouses: "Blouses", tees: "Tees", jackets: "Jackets", coats: "Coats" } },
   dresses: { label: "Dresses", subtypes: {} },
@@ -55,7 +77,8 @@ export const FASHION_SUBCATEGORY_GROUPS: SubcategoryGroups = {
     label: "Trousers",
     subtypes: { skirts: "Skirts", shorts: "Shorts", jeans: "Jeans" },
   },
-  // A suit is itself a matching set (jacket + trousers) — old `suit` lands here.
+  // A suit is itself a matching set (jacket + trousers) — old `suit` lands
+  // here, and so does a matching activewear set (old gym `set`).
   sets: { label: "Sets", subtypes: {} },
   shoes: { label: "Shoes", subtypes: {} },
   bags: { label: "Bags", subtypes: {} },
@@ -81,6 +104,13 @@ export const FASHION_SUBCATEGORY_GROUPS: SubcategoryGroups = {
 
 /** Flattened for the Zod enum — every subtype key is unique across groups. */
 export const FASHION_SUBTYPES = [
+  "leggings",
+  "sports_bra",
+  "gym_shorts",
+  "tank_top",
+  "track_jacket",
+  "tracksuit",
+  "gym_shoes",
   "shirts",
   "blouses",
   "tees",

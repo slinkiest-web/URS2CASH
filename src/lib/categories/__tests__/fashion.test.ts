@@ -150,6 +150,30 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
     }
   });
 
+  it("accepts Activewear (absorbed from the former standalone gym_activewear category, 2026-08-09) with its renamed subtypes", () => {
+    for (const product_subtype of ["leggings", "sports_bra", "gym_shorts", "tank_top", "track_jacket", "tracksuit", "gym_shoes"]) {
+      const result = fashionAttributesSchema.safeParse({
+        condition: "brand_new",
+        product_group: "activewear",
+        product_subtype,
+        gender: "unisex",
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects the old un-renamed gym subtype keys — shorts/jacket collide with Trousers/Tops, so they were renamed to gym_shorts/track_jacket", () => {
+    for (const product_subtype of ["shorts_gym", "jacket"]) {
+      const result = fashionAttributesSchema.safeParse({
+        condition: "brand_new",
+        product_group: "activewear",
+        product_subtype,
+        gender: "unisex",
+      });
+      expect(result.success).toBe(false);
+    }
+  });
+
   it("rejects a missing product_group — required, unlike product_subtype", () => {
     const result = fashionAttributesSchema.safeParse({
       condition: "brand_new",

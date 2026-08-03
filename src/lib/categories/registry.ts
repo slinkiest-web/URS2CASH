@@ -25,14 +25,6 @@ import {
   SCHEMA_VERSION as FASHION_SCHEMA_VERSION,
 } from "./schemas/fashion";
 import {
-  GYM_ACTIVEWEAR_SLUG,
-  GYM_ACTIVEWEAR_ALLOWED_CONDITIONS,
-  GYM_ACTIVEWEAR_MIN_PHOTOS,
-  GYM_ACTIVEWEAR_USAGE_INDICATOR_FIELDS,
-  gymActivewearAttributesSchema,
-  SCHEMA_VERSION as GYM_ACTIVEWEAR_SCHEMA_VERSION,
-} from "./schemas/gym-activewear";
-import {
   GADGETS_SLUG,
   GADGETS_ALLOWED_CONDITIONS,
   GADGETS_MIN_PHOTOS,
@@ -71,8 +63,7 @@ export type CategorySlug =
   | typeof FASHION_SLUG
   | typeof GADGETS_SLUG
   | typeof PERSONAL_CARE_SLUG
-  | typeof HOME_GOODS_SLUG
-  | typeof GYM_ACTIVEWEAR_SLUG;
+  | typeof HOME_GOODS_SLUG;
 
 /**
  * A two-level subcategory group (design/UX pass, 2026-08-07 — Beauty and
@@ -180,20 +171,6 @@ export const categoryRegistry: Record<CategorySlug, CategoryConfig> = {
     schema: homeGoodsAttributesSchema,
     schemaVersion: HOME_GOODS_SCHEMA_VERSION,
     usageIndicatorFields: HOME_GOODS_USAGE_INDICATOR_FIELDS,
-    adminOnlyAttributeFields: [],
-  },
-  // New category (design/UX pass, 2026-08-07) — not PRD-sourced.
-  [GYM_ACTIVEWEAR_SLUG]: {
-    slug: GYM_ACTIVEWEAR_SLUG,
-    displayName: "Gym & Activewear",
-    listable: true,
-    browsable: true,
-    minPhotos: GYM_ACTIVEWEAR_MIN_PHOTOS,
-    maxPhotos: MAX_PHOTOS,
-    allowedConditions: GYM_ACTIVEWEAR_ALLOWED_CONDITIONS,
-    schema: gymActivewearAttributesSchema,
-    schemaVersion: GYM_ACTIVEWEAR_SCHEMA_VERSION,
-    usageIndicatorFields: GYM_ACTIVEWEAR_USAGE_INDICATOR_FIELDS,
     adminOnlyAttributeFields: [],
   },
 };
