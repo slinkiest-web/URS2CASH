@@ -47,6 +47,7 @@ export default async function SellPage({
         maxPhotos: config.maxPhotos,
         allowedConditions: config.allowedConditions,
         usageIndicatorFields: config.usageIndicatorFields,
+        subcategoryGroups: config.subcategoryGroups,
       };
     });
 

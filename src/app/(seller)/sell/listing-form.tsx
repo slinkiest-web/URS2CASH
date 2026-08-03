@@ -6,7 +6,7 @@ import Image from "next/image";
 import { Upload, X } from "lucide-react";
 import { createListing, updateListing } from "@/lib/actions/listings";
 import { getAttributeFieldDescriptors, type FieldDescriptor } from "@/lib/categories/form-fields";
-import type { CategorySlug } from "@/lib/categories/registry";
+import type { CategorySlug, SubcategoryGroups } from "@/lib/categories/registry";
 import type { ConditionValue } from "@/lib/categories/shared";
 import { categoryRegistry } from "@/lib/categories/registry";
 import { uploadListingPhoto } from "@/lib/storage/upload-listing-photo";
@@ -21,7 +21,66 @@ export type SellableCategory = {
   maxPhotos: number;
   allowedConditions: readonly ConditionValue[];
   usageIndicatorFields: readonly string[];
+  /** Present only for categories with a two-level group/subtype taxonomy (Beauty, Fashion). */
+  subcategoryGroups?: SubcategoryGroups;
 };
+
+/**
+ * Renders the group -> subtype pair for a category with `subcategoryGroups`
+ * (Beauty, Fashion) — group required, subtype optional and scoped to
+ * whichever group is currently selected. Driven entirely by registry data,
+ * never by category slug (§12.3) — any future category with the same
+ * `subcategoryGroups` shape gets this for free.
+ */
+function GroupSubtypeSelector({
+  groups,
+  groupValue,
+  subtypeValue,
+  onGroupChange,
+  onSubtypeChange,
+}: {
+  groups: SubcategoryGroups;
+  groupValue: string;
+  subtypeValue: string;
+  onGroupChange: (value: string) => void;
+  onSubtypeChange: (value: string) => void;
+}) {
+  const selectedGroup = groupValue ? groups[groupValue] : undefined;
+  const subtypeEntries = selectedGroup ? Object.entries(selectedGroup.subtypes) : [];
+
+  return (
+    <>
+      <label className="flex flex-col gap-1.5">
+        <span className={fieldLabelClass}>Subcategory</span>
+        <select value={groupValue} onChange={(e) => onGroupChange(e.target.value)} required className={selectClass}>
+          <option value="" disabled>
+            Select…
+          </option>
+          {Object.entries(groups).map(([key, group]) => (
+            <option key={key} value={key}>
+              {group.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {subtypeEntries.length > 0 ? (
+        <label className="flex flex-col gap-1.5">
+          <span className={fieldLabelClass}>
+            {selectedGroup?.label} type <span className={fieldHintClass}>(optional)</span>
+          </span>
+          <select value={subtypeValue} onChange={(e) => onSubtypeChange(e.target.value)} className={selectClass}>
+            <option value="">Select…</option>
+            {subtypeEntries.map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+    </>
+  );
+}
 
 export type ExistingListing = {
   id: string;
@@ -364,7 +423,6 @@ export function ListingForm({
     const nextSlug = slug as CategorySlug;
     setCategorySlug(nextSlug);
     setCondition("");
-    setAttributeValues({});
     setPhotos([]);
     setFlawPhotoIndexes([]);
     setDraftStartedAt(Date.now());
@@ -375,6 +433,16 @@ export function ListingForm({
       // opened for a category (category_id is a required property).
       track("listing_draft_started", { category_id: category.slug, is_first_listing: isFirstListing });
     }
+
+    // Gender is required-with-a-default at the schema level (never a
+    // blocking blank dropdown) — pre-selecting it here so the UI shows that
+    // default immediately, one tap to change rather than a barrier. Keyed
+    // on field *name*, not category slug — any category whose schema has a
+    // `gender` field gets this for free.
+    const hasGenderField = category
+      ? getAttributeFieldDescriptors(categoryRegistry[nextSlug].schema).some((f) => f.name === "gender")
+      : false;
+    setAttributeValues(hasGenderField ? { gender: "unisex" } : {});
   }
 
   async function handlePhotoSelect(fileList: FileList) {
@@ -531,7 +599,13 @@ export function ListingForm({
     setHasFlaws(false);
     setPhotos([]);
     setFlawPhotoIndexes([]);
-    setAttributeValues(preservedBrand !== undefined ? { brand: preservedBrand } : {});
+    const hasGenderField = preservedCategory
+      ? getAttributeFieldDescriptors(categoryRegistry[preservedCategory].schema).some((f) => f.name === "gender")
+      : false;
+    setAttributeValues({
+      ...(preservedBrand !== undefined ? { brand: preservedBrand } : {}),
+      ...(hasGenderField ? { gender: "unisex" } : {}),
+    });
     setCategorySlug(preservedCategory);
     setCondition(preservedCondition);
     setDraftStartedAt(Date.now());
@@ -562,7 +636,12 @@ export function ListingForm({
 
   const attributeFields = selectedCategory ? getAttributeFieldDescriptors(categoryRegistry[selectedCategory.slug].schema) : [];
   const visibleAttributeFields = attributeFields.filter(
-    (field) => condition === "used" || !selectedCategory?.usageIndicatorFields.includes(field.name)
+    (field) =>
+      // product_group/product_subtype render via the dedicated
+      // GroupSubtypeSelector below, never the generic field list.
+      field.name !== "product_group" &&
+      field.name !== "product_subtype" &&
+      (condition === "used" || !selectedCategory?.usageIndicatorFields.includes(field.name))
   );
   // Everyday-seller UX: only genuinely required category attributes show
   // inline. Everything optional (the bulk of most categories' fields) is
@@ -570,9 +649,13 @@ export function ListingForm({
   // form by default instead of every field a category schema supports.
   // Driven entirely by each field's own required/optional flag (derived
   // from the Zod schema, src/lib/categories/form-fields.ts) — no
-  // per-category logic here.
-  const requiredAttributeFields = visibleAttributeFields.filter((field) => field.required);
-  const optionalAttributeFields = visibleAttributeFields.filter((field) => !field.required);
+  // per-category logic here. `gender` is the one name-keyed exception:
+  // Zod's `.default()` makes it optional at the schema level (so an
+  // omitted value doesn't fail validation), but it's still a field every
+  // seller should see and set deliberately, not one that hides behind a
+  // disclosure.
+  const requiredAttributeFields = visibleAttributeFields.filter((field) => field.required || field.name === "gender");
+  const optionalAttributeFields = visibleAttributeFields.filter((field) => !field.required && field.name !== "gender");
 
   return (
     <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-5">
@@ -739,6 +822,22 @@ export function ListingForm({
               </div>
             ) : null}
           </div>
+
+          {selectedCategory.subcategoryGroups ? (
+            <GroupSubtypeSelector
+              groups={selectedCategory.subcategoryGroups}
+              groupValue={typeof attributeValues["product_group"] === "string" ? (attributeValues["product_group"] as string) : ""}
+              subtypeValue={typeof attributeValues["product_subtype"] === "string" ? (attributeValues["product_subtype"] as string) : ""}
+              onGroupChange={(value) =>
+                // Changing group clears any subtype from a different group —
+                // never leaves a stale, now-invalid subtype selected.
+                setAttributeValues((prev) => ({ ...prev, product_group: value || undefined, product_subtype: undefined }))
+              }
+              onSubtypeChange={(value) =>
+                setAttributeValues((prev) => ({ ...prev, product_subtype: value || undefined }))
+              }
+            />
+          ) : null}
 
           {requiredAttributeFields.map((field) => (
             <AttributeFieldInput

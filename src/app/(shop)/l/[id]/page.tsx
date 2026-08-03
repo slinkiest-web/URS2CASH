@@ -181,6 +181,26 @@ export default async function ListingDetailPage({ params }: { params: Promise<Pa
             </div>
           ) : null}
 
+          {/* Optional listing-level fields added in the sell-flow
+              friction-removal pass (2026-08-07) — shown only when the
+              seller actually filled them in. */}
+          {listing.timesUsed || listing.reasonForSelling ? (
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              {listing.timesUsed ? (
+                <div>
+                  <dt className="text-zinc-500 dark:text-zinc-400">Times worn or used</dt>
+                  <dd className="text-zinc-900 dark:text-zinc-50">{listing.timesUsed}</dd>
+                </div>
+              ) : null}
+              {listing.reasonForSelling ? (
+                <div>
+                  <dt className="text-zinc-500 dark:text-zinc-400">Reason for selling</dt>
+                  <dd className="text-zinc-900 dark:text-zinc-50">{listing.reasonForSelling}</dd>
+                </div>
+              ) : null}
+            </dl>
+          ) : null}
+
           {/* §9.1 HARD RULE: the only contact affordance on this page, and
               it routes to platform support — never the seller. */}
           <SupportLink listingId={listing.id} categorySlug={listing.categorySlug} supportEmail={supportEmail} />

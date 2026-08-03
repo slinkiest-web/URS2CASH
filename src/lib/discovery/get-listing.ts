@@ -17,6 +17,8 @@ export type ListingDetail = {
   priceKobo: number;
   condition: ConditionValue;
   conditionNotes: string | null;
+  reasonForSelling: string | null;
+  timesUsed: string | null;
   photoUrls: string[];
   flawPhotoIndexes: number[];
   status: string;
@@ -53,7 +55,7 @@ export const getListingDetail = cache(async (id: string): Promise<ListingDetail 
   const { data } = await supabase
     .from("listings")
     .select(
-      "id, title, description, price_kobo, condition, condition_notes, photo_urls, flaw_photo_indexes, status, seller_id, published_at, attributes, category_id"
+      "id, title, description, price_kobo, condition, condition_notes, reason_for_selling, times_used, photo_urls, flaw_photo_indexes, status, seller_id, published_at, attributes, category_id"
     )
     .eq("id", id)
     .single();
@@ -78,6 +80,8 @@ export const getListingDetail = cache(async (id: string): Promise<ListingDetail 
     priceKobo: data.price_kobo,
     condition: data.condition as ConditionValue,
     conditionNotes: data.condition_notes,
+    reasonForSelling: data.reason_for_selling,
+    timesUsed: data.times_used,
     photoUrls: data.photo_urls,
     flawPhotoIndexes: data.flaw_photo_indexes,
     status: data.status,

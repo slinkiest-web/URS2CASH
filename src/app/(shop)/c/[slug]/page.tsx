@@ -62,7 +62,13 @@ export default async function CategoryPage({
   }
 
   const categoryConfig = categoryRegistry[category.slug];
-  const attributeFilterDescriptors = getAttributeFilterDescriptors(category.slug);
+  const allAttributeFilterDescriptors = getAttributeFilterDescriptors(category.slug);
+  // product_group/product_subtype/gender get dedicated tab/pill UI below,
+  // never the generic dropdown list — filtered out by name, not category
+  // slug, so any future category with these field names gets the same
+  // treatment for free (§12.3).
+  const SPECIAL_FILTER_NAMES = new Set(["product_group", "product_subtype", "gender"]);
+  const attributeFilterDescriptors = allAttributeFilterDescriptors.filter((f) => !SPECIAL_FILTER_NAMES.has(f.name));
 
   const priceMinNaira = first(resolvedSearchParams["price_min"]);
   const priceMaxNaira = first(resolvedSearchParams["price_max"]);
@@ -70,10 +76,16 @@ export default async function CategoryPage({
   const page = Math.max(1, Number(first(resolvedSearchParams["page"])) || 1);
 
   const attributeFilters: Record<string, string> = {};
-  for (const field of attributeFilterDescriptors) {
+  for (const field of allAttributeFilterDescriptors) {
     const value = first(resolvedSearchParams[`attr_${field.name}`]);
     if (value) attributeFilters[field.name] = value;
   }
+
+  const subcategoryGroups = categoryConfig.subcategoryGroups;
+  const selectedGroup = attributeFilters["product_group"];
+  const selectedSubtype = attributeFilters["product_subtype"];
+  const genderDescriptor = allAttributeFilterDescriptors.find((f) => f.name === "gender");
+  const selectedGender = attributeFilters["gender"];
 
   const filters: CategoryListingFilters = {
     priceMinKobo: priceMinNaira ? nairaToKobo(Number(priceMinNaira)) : undefined,
@@ -88,6 +100,85 @@ export default async function CategoryPage({
     <main className="flex flex-1 flex-col bg-u2c-canvas">
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6 lg:px-12">
         <h1 className="font-display text-2xl font-medium text-u2c-ink">{category.displayName}</h1>
+
+        {/* Group tabs (ASOS-style "Shop All" + each subcategory group).
+            Registry-driven via subcategoryGroups — present for Beauty and
+            Fashion today, any future category with the same shape gets this
+            for free (§12.3). Selecting a new group clears any stale
+            subtype from the previous group. */}
+        {subcategoryGroups ? (
+          <nav className="flex flex-wrap gap-2 border-b border-u2c-line pb-4">
+            <a
+              href={buildHref(slug, resolvedSearchParams, { attr_product_group: undefined, attr_product_subtype: undefined })}
+              className={`rounded-full px-4 py-1.5 text-[13px] font-bold uppercase tracking-[0.03em] transition-colors duration-150 ${
+                !selectedGroup ? "bg-u2c-ink text-white" : "bg-u2c-tile text-u2c-ink hover:bg-u2c-line"
+              }`}
+            >
+              Shop All
+            </a>
+            {Object.entries(subcategoryGroups).map(([key, group]) => (
+              <a
+                key={key}
+                href={buildHref(slug, resolvedSearchParams, { attr_product_group: key, attr_product_subtype: undefined })}
+                className={`rounded-full px-4 py-1.5 text-[13px] font-bold uppercase tracking-[0.03em] transition-colors duration-150 ${
+                  selectedGroup === key ? "bg-u2c-ink text-white" : "bg-u2c-tile text-u2c-ink hover:bg-u2c-line"
+                }`}
+              >
+                {group.label}
+              </a>
+            ))}
+          </nav>
+        ) : null}
+
+        {/* Subtype pills — only once a group with subtypes is selected. */}
+        {subcategoryGroups && selectedGroup && Object.keys(subcategoryGroups[selectedGroup]?.subtypes ?? {}).length > 0 ? (
+          <nav className="-mt-4 flex flex-wrap gap-2">
+            <a
+              href={buildHref(slug, resolvedSearchParams, { attr_product_subtype: undefined })}
+              className={`rounded-[var(--u2c-radius-control)] border px-3 py-1 text-[13px] transition-colors duration-150 ${
+                !selectedSubtype ? "border-u2c-ink text-u2c-ink" : "border-u2c-line text-u2c-ink-soft hover:border-u2c-ink"
+              }`}
+            >
+              All {subcategoryGroups[selectedGroup]?.label}
+            </a>
+            {Object.entries(subcategoryGroups[selectedGroup]?.subtypes ?? {}).map(([key, label]) => (
+              <a
+                key={key}
+                href={buildHref(slug, resolvedSearchParams, { attr_product_subtype: key })}
+                className={`rounded-[var(--u2c-radius-control)] border px-3 py-1 text-[13px] transition-colors duration-150 ${
+                  selectedSubtype === key ? "border-u2c-ink text-u2c-ink" : "border-u2c-line text-u2c-ink-soft hover:border-u2c-ink"
+                }`}
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
+        ) : null}
+
+        {/* Gender filter — Men/Women, exact-match only (never leaks a
+            womens-tagged listing into a "Men" filter or vice versa;
+            unisex/kids items show under "All" only, not under either). */}
+        {genderDescriptor ? (
+          <nav className="flex gap-2">
+            {[
+              { key: undefined, label: "All" },
+              { key: "womens", label: "Women" },
+              { key: "mens", label: "Men" },
+            ].map((option) => (
+              <a
+                key={option.label}
+                href={buildHref(slug, resolvedSearchParams, { attr_gender: option.key })}
+                className={`rounded-[var(--u2c-radius-control)] px-4 py-1.5 text-[13px] font-semibold transition-colors duration-150 ${
+                  (selectedGender ?? undefined) === option.key
+                    ? "bg-u2c-primary text-white"
+                    : "border border-u2c-line text-u2c-ink hover:border-u2c-ink"
+                }`}
+              >
+                {option.label}
+              </a>
+            ))}
+          </nav>
+        ) : null}
 
         {/* GET form: filter state lives entirely in the URL query string, so
             every combination is a shareable, bookmarkable link, and the page

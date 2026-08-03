@@ -11,6 +11,7 @@ import {
   BEAUTY_ALLOWED_CONDITIONS,
   BEAUTY_MIN_PHOTOS,
   BEAUTY_USAGE_INDICATOR_FIELDS,
+  BEAUTY_SUBCATEGORY_GROUPS,
   beautyAttributesSchema,
   SCHEMA_VERSION as BEAUTY_SCHEMA_VERSION,
 } from "./schemas/beauty";
@@ -19,9 +20,18 @@ import {
   FASHION_ALLOWED_CONDITIONS,
   FASHION_MIN_PHOTOS,
   FASHION_USAGE_INDICATOR_FIELDS,
+  FASHION_SUBCATEGORY_GROUPS,
   fashionAttributesSchema,
   SCHEMA_VERSION as FASHION_SCHEMA_VERSION,
 } from "./schemas/fashion";
+import {
+  GYM_ACTIVEWEAR_SLUG,
+  GYM_ACTIVEWEAR_ALLOWED_CONDITIONS,
+  GYM_ACTIVEWEAR_MIN_PHOTOS,
+  GYM_ACTIVEWEAR_USAGE_INDICATOR_FIELDS,
+  gymActivewearAttributesSchema,
+  SCHEMA_VERSION as GYM_ACTIVEWEAR_SCHEMA_VERSION,
+} from "./schemas/gym-activewear";
 import {
   GADGETS_SLUG,
   GADGETS_ALLOWED_CONDITIONS,
@@ -61,7 +71,16 @@ export type CategorySlug =
   | typeof FASHION_SLUG
   | typeof GADGETS_SLUG
   | typeof PERSONAL_CARE_SLUG
-  | typeof HOME_GOODS_SLUG;
+  | typeof HOME_GOODS_SLUG
+  | typeof GYM_ACTIVEWEAR_SLUG;
+
+/**
+ * A two-level subcategory group (design/UX pass, 2026-08-07 — Beauty and
+ * Fashion both use this identical shape, no per-category switch). Keyed by
+ * group key -> { label, subtypes: { subtypeKey -> label } }. `subtypes` is
+ * `{}` for a group with no further breakdown (e.g. Beauty's "Other").
+ */
+export type SubcategoryGroups = Record<string, { label: string; subtypes: Record<string, string> }>;
 
 export type CategoryConfig = {
   slug: CategorySlug;
@@ -82,6 +101,13 @@ export type CategoryConfig = {
    * than a per-category switch (§12.3).
    */
   adminOnlyAttributeFields: readonly string[];
+  /**
+   * Present only for categories with a two-level group/subtype taxonomy
+   * (Beauty, Fashion). Drives the sell form's group->subtype selector and
+   * the category page's group tabs generically — both keyed off this data,
+   * never off category slug.
+   */
+  subcategoryGroups?: SubcategoryGroups;
 };
 
 /** PRD §6.4: all five launch categories are `listable`; only Beauty is `browsable`. */
@@ -98,12 +124,16 @@ export const categoryRegistry: Record<CategorySlug, CategoryConfig> = {
     schemaVersion: BEAUTY_SCHEMA_VERSION,
     usageIndicatorFields: BEAUTY_USAGE_INDICATOR_FIELDS,
     adminOnlyAttributeFields: [],
+    subcategoryGroups: BEAUTY_SUBCATEGORY_GROUPS,
   },
   [FASHION_SLUG]: {
     slug: FASHION_SLUG,
     displayName: "Fashion",
     listable: true,
-    browsable: false,
+    // Flipped true (design/UX pass, 2026-08-07) — was the deliberate
+    // "opening soon" founding-seller state; also flipped in the DB seed/
+    // migration so this stays true across a fresh `db reset`.
+    browsable: true,
     minPhotos: FASHION_MIN_PHOTOS,
     maxPhotos: MAX_PHOTOS,
     allowedConditions: FASHION_ALLOWED_CONDITIONS,
@@ -111,6 +141,7 @@ export const categoryRegistry: Record<CategorySlug, CategoryConfig> = {
     schemaVersion: FASHION_SCHEMA_VERSION,
     usageIndicatorFields: FASHION_USAGE_INDICATOR_FIELDS,
     adminOnlyAttributeFields: [],
+    subcategoryGroups: FASHION_SUBCATEGORY_GROUPS,
   },
   [GADGETS_SLUG]: {
     slug: GADGETS_SLUG,
@@ -149,6 +180,20 @@ export const categoryRegistry: Record<CategorySlug, CategoryConfig> = {
     schema: homeGoodsAttributesSchema,
     schemaVersion: HOME_GOODS_SCHEMA_VERSION,
     usageIndicatorFields: HOME_GOODS_USAGE_INDICATOR_FIELDS,
+    adminOnlyAttributeFields: [],
+  },
+  // New category (design/UX pass, 2026-08-07) — not PRD-sourced.
+  [GYM_ACTIVEWEAR_SLUG]: {
+    slug: GYM_ACTIVEWEAR_SLUG,
+    displayName: "Gym & Activewear",
+    listable: true,
+    browsable: true,
+    minPhotos: GYM_ACTIVEWEAR_MIN_PHOTOS,
+    maxPhotos: MAX_PHOTOS,
+    allowedConditions: GYM_ACTIVEWEAR_ALLOWED_CONDITIONS,
+    schema: gymActivewearAttributesSchema,
+    schemaVersion: GYM_ACTIVEWEAR_SCHEMA_VERSION,
+    usageIndicatorFields: GYM_ACTIVEWEAR_USAGE_INDICATOR_FIELDS,
     adminOnlyAttributeFields: [],
   },
 };

@@ -1,10 +1,14 @@
 /**
- * Beauty category attribute schema. PRD §6.4.1.
+ * Beauty category attribute schema. PRD §6.4.1, restructured to a two-level
+ * group/subtype taxonomy (design/UX pass, 2026-08-07 — see
+ * docs/DECISIONS.md for the full mapping of every legacy `product_type`
+ * value into this structure).
  */
 import { z } from "zod";
 import { ALL_CONDITIONS, daysFromNow, isPastDate } from "../shared";
+import type { SubcategoryGroups } from "../registry";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const BEAUTY_SLUG = "beauty" as const;
 export const BEAUTY_ALLOWED_CONDITIONS = ALL_CONDITIONS;
@@ -12,38 +16,113 @@ export const BEAUTY_MIN_PHOTOS = 1;
 /** PRD §6.3's usage indicator set for this category — UI reveal-on-`used`, not a validation source. */
 export const BEAUTY_USAGE_INDICATOR_FIELDS = ["fill_level_percent"] as const;
 
-export const BEAUTY_PRODUCT_TYPES = [
-  "foundation_liquid",
-  "foundation_powder",
+/**
+ * Two-level taxonomy (design/UX pass, 2026-08-07). Every one of the 20
+ * pre-restructure `product_type` values maps somewhere in here — see the
+ * inline notes for the handful that needed a judgment call, not a literal
+ * rename.
+ */
+export const BEAUTY_GROUPS = ["face", "lips", "eyes", "brushes_tools", "skincare", "other"] as const;
+export type BeautyGroup = (typeof BEAUTY_GROUPS)[number];
+
+export const BEAUTY_SUBCATEGORY_GROUPS: SubcategoryGroups = {
+  face: {
+    label: "Face",
+    subtypes: {
+      // Absorbs the old foundation_liquid + foundation_powder split.
+      foundation: "Foundation",
+      concealer: "Concealer",
+      powder: "Powder",
+      blush: "Blush",
+      bronzer: "Bronzer",
+      highlighter: "Highlighter",
+      primer: "Primer",
+      setting_spray: "Setting Spray",
+    },
+  },
+  lips: {
+    label: "Lips",
+    subtypes: {
+      lipstick: "Lipstick",
+      gloss: "Gloss", // was lip_gloss
+      liner: "Liner", // was lip_liner
+    },
+  },
+  eyes: {
+    label: "Eyes",
+    subtypes: {
+      // Absorbs the old liquid_eyeliner + pencil_eyeliner split.
+      eyeliner: "Eyeliner",
+      eyeshadow: "Eyeshadow", // was eyeshadow_palette
+      mascara: "Mascara",
+      brow: "Brow",
+    },
+  },
+  brushes_tools: {
+    label: "Brushes & Tools",
+    subtypes: {
+      brushes: "Brushes", // was brush
+      sponges_blenders: "Sponges/Beauty Blenders", // was sponge
+      // Old `tool` has no specific subtype home — maps to this group with
+      // no subtype selected, which is valid since subtype is optional.
+    },
+  },
+  skincare: {
+    label: "Skincare",
+    subtypes: {
+      cleanser: "Cleanser",
+      moisturizer: "Moisturizer",
+      serum: "Serum",
+      toner: "Toner",
+      sunscreen: "Sunscreen",
+      mask: "Mask",
+    },
+  },
+  // Catch-all added beyond the requested 7 buckets so nothing becomes
+  // unlistable (design/UX pass, 2026-08-07) — absorbs old `other`, and is
+  // where `tool` lands too if a seller doesn't want Brushes & Tools.
+  other: { label: "Other", subtypes: {} },
+};
+
+/** Flattened for the Zod enum — every subtype key is unique across groups. */
+export const BEAUTY_SUBTYPES = [
+  "foundation",
   "concealer",
   "powder",
   "blush",
   "bronzer",
   "highlighter",
-  "eyeshadow_palette",
-  "mascara",
-  "liquid_eyeliner",
-  "pencil_eyeliner",
-  "brow",
-  "lipstick",
-  "lip_gloss",
-  "lip_liner",
-  "setting_spray",
   "primer",
-  "brush",
-  "sponge",
-  "tool",
-  "other",
+  "setting_spray",
+  "lipstick",
+  "gloss",
+  "liner",
+  "eyeliner",
+  "eyeshadow",
+  "mascara",
+  "brow",
+  "brushes",
+  "sponges_blenders",
+  "cleanser",
+  "moisturizer",
+  "serum",
+  "toner",
+  "sunscreen",
+  "mask",
 ] as const;
 
-/** PRD §6.4.1: hygiene-sensitive subcategories accept brand_new/opened_unused only. */
-const HYGIENE_SENSITIVE_PRODUCT_TYPES: readonly string[] = [
-  "mascara",
-  "liquid_eyeliner",
-  "lip_gloss",
-  "lipstick",
-  "foundation_liquid",
-];
+/**
+ * §6.4.1 HARD RULE, remapped: hygiene-sensitive subcategories accept
+ * brand_new/opened_unused only. Originally keyed on the specific liquid
+ * formats (liquid formulas breed bacteria; powder/pencil don't) — merging
+ * liquid+powder foundation into one "foundation" subtype and liquid+pencil
+ * eyeliner into one "eyeliner" subtype means that distinction can no longer
+ * be expressed. Applied conservatively to the whole merged subtype (blocks
+ * more than before, never less). Known gap: since product_subtype is
+ * optional, a seller can dodge this by picking the group without the
+ * specific subtype — flagged, not solved, here.
+ */
+const HYGIENE_SENSITIVE_SUBTYPES: readonly string[] = ["mascara", "eyeliner", "lipstick", "gloss", "foundation"];
 
 const PAO_MONTHS = ["3", "6", "9", "12", "24", "36"] as const;
 
@@ -51,7 +130,8 @@ const beautyBaseSchema = z
   .object({
     condition: z.enum(BEAUTY_ALLOWED_CONDITIONS),
     brand: z.string().trim().min(2).max(60),
-    product_type: z.enum(BEAUTY_PRODUCT_TYPES),
+    product_group: z.enum(BEAUTY_GROUPS),
+    product_subtype: z.enum(BEAUTY_SUBTYPES).optional(),
     shade: z.string().trim().max(60).optional(),
     size_value: z.number().positive().optional(),
     size_unit: z.enum(["ml", "g", "oz"]).optional(),
@@ -67,12 +147,28 @@ const beautyBaseSchema = z
   .strict();
 
 export const beautyAttributesSchema = beautyBaseSchema.superRefine((data, ctx) => {
+  // product_subtype, when supplied, must actually belong to the chosen group.
+  if (data.product_subtype !== undefined) {
+    const validSubtypes = Object.keys(BEAUTY_SUBCATEGORY_GROUPS[data.product_group]?.subtypes ?? {});
+    if (!validSubtypes.includes(data.product_subtype)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["product_subtype"],
+        message: `${data.product_subtype} is not a subtype of ${data.product_group}.`,
+      });
+    }
+  }
+
   // §6.4.1 HARD RULE: hygiene-sensitive subcategories may not be listed as `used`.
-  if (data.condition === "used" && HYGIENE_SENSITIVE_PRODUCT_TYPES.includes(data.product_type)) {
+  if (
+    data.condition === "used" &&
+    data.product_subtype !== undefined &&
+    HYGIENE_SENSITIVE_SUBTYPES.includes(data.product_subtype)
+  ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["condition"],
-      message: `${data.product_type} may not be listed as used (PRD §6.4.1).`,
+      message: `${data.product_subtype} may not be listed as used (PRD §6.4.1).`,
     });
   }
 

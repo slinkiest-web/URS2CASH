@@ -4,21 +4,22 @@ import { categoryRegistry, CATEGORY_SLUGS } from "@/lib/categories/registry";
 import { daysFromNow } from "@/lib/categories/shared";
 
 describe("category registry (PRD §6.4/§6.5)", () => {
-  it("has exactly the five launch category slugs", () => {
+  it("has exactly the six launch category slugs (Gym & Activewear added 2026-08-07)", () => {
     expect(new Set(CATEGORY_SLUGS)).toEqual(
-      new Set(["beauty", "fashion", "gadgets", "personal_care", "home_goods"])
+      new Set(["beauty", "fashion", "gadgets", "personal_care", "home_goods", "gym_activewear"])
     );
   });
 
-  it("marks all five categories listable, and only beauty browsable", () => {
+  it("marks all six categories listable, and beauty/fashion/gym_activewear browsable (Fashion flipped, Gym & Activewear new, 2026-08-07)", () => {
     for (const slug of CATEGORY_SLUGS) {
       expect(categoryRegistry[slug].listable).toBe(true);
     }
     expect(categoryRegistry.beauty.browsable).toBe(true);
-    expect(categoryRegistry.fashion.browsable).toBe(false);
+    expect(categoryRegistry.fashion.browsable).toBe(true);
     expect(categoryRegistry.gadgets.browsable).toBe(false);
     expect(categoryRegistry.personal_care.browsable).toBe(false);
     expect(categoryRegistry.home_goods.browsable).toBe(false);
+    expect(categoryRegistry.gym_activewear.browsable).toBe(true);
   });
 
   it("requires only 1 photo minimum per category — deliberately relaxed below PRD §6.4's original 3-5 range for everyday-seller UX", () => {
@@ -27,10 +28,17 @@ describe("category registry (PRD §6.4/§6.5)", () => {
     expect(categoryRegistry.gadgets.minPhotos).toBe(1);
     expect(categoryRegistry.personal_care.minPhotos).toBe(1);
     expect(categoryRegistry.home_goods.minPhotos).toBe(1);
+    expect(categoryRegistry.gym_activewear.minPhotos).toBe(1);
   });
 
   it("excludes used from personal_care's allowed conditions", () => {
     expect(categoryRegistry.personal_care.allowedConditions).not.toContain("used");
+  });
+
+  it("gives beauty and fashion a subcategoryGroups taxonomy, and gym_activewear none (flat product_type, no grouping requested)", () => {
+    expect(categoryRegistry.beauty.subcategoryGroups).toBeDefined();
+    expect(categoryRegistry.fashion.subcategoryGroups).toBeDefined();
+    expect(categoryRegistry.gym_activewear.subcategoryGroups).toBeUndefined();
   });
 });
 
@@ -47,7 +55,8 @@ describe("resolveCategoryAttributes", () => {
     const result = resolveCategoryAttributes("beauty", {
       condition: "brand_new",
       brand: "Fenty",
-      product_type: "foundation_powder",
+      product_group: "face",
+      product_subtype: "foundation",
       expiry_date: daysFromNow(200).toISOString(),
     });
     expect(result.ok).toBe(true);
@@ -57,7 +66,8 @@ describe("resolveCategoryAttributes", () => {
     const result = resolveCategoryAttributes("beauty", {
       condition: "brand_new",
       brand: "Fenty",
-      product_type: "foundation_powder",
+      product_group: "face",
+      product_subtype: "foundation",
       expiry_date: daysFromNow(200).toISOString(),
       not_a_real_field: "x",
     });
@@ -65,6 +75,14 @@ describe("resolveCategoryAttributes", () => {
     if (!result.ok) {
       expect(result.error.code).toBe("validation_error");
     }
+  });
+
+  it("resolves valid attributes for the new gym_activewear category", () => {
+    const result = resolveCategoryAttributes("gym_activewear", {
+      condition: "brand_new",
+      product_type: "leggings",
+    });
+    expect(result.ok).toBe(true);
   });
 
   it("rejects condition = used for personal_care via the resolver", () => {
