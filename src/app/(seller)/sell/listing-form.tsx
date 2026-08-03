@@ -12,6 +12,7 @@ import { categoryRegistry } from "@/lib/categories/registry";
 import { uploadListingPhoto } from "@/lib/storage/upload-listing-photo";
 import { track } from "@/lib/analytics/track-client";
 import { nairaToKobo, formatKobo } from "@/lib/money";
+import { TIMES_USED_VALUES, TIMES_USED_LABELS } from "@/lib/listings/schema";
 
 export type SellableCategory = {
   slug: CategorySlug;
@@ -784,14 +785,18 @@ export function ListingForm({
             <span className={fieldLabelClass}>
               Times worn or used <span className={fieldHintClass}>(optional)</span>
             </span>
-            <input
-              type="text"
+            <select
               value={timesUsed}
               onChange={(e) => setTimesUsed(e.target.value)}
-              maxLength={100}
-              placeholder="e.g. twice, a handful of times, daily for a month"
-              className={inputBaseClass}
-            />
+              className={selectClass}
+            >
+              <option value="">Select…</option>
+              {TIMES_USED_VALUES.map((value) => (
+                <option key={value} value={value}>
+                  {TIMES_USED_LABELS[value]}
+                </option>
+              ))}
+            </select>
           </label>
 
           <div className="flex flex-col gap-3 rounded-[var(--u2c-radius-card)] border border-u2c-line bg-u2c-surface p-4">

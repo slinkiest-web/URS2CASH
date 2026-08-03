@@ -14,6 +14,10 @@
  * flaws?" is an independent yes/no question in the UI; conditionNotes and
  * flawPhotoIndexes are how a "yes" answer gets recorded, not a requirement
  * that fires off `condition === "used"`.
+ *
+ * 2026-08-09: timesUsed changed from free text to a fixed 3-option
+ * dropdown (TIMES_USED_VALUES below) — easy for anyone to answer, still
+ * optional.
  */
 import { z } from "zod";
 import type { CategoryConfig } from "@/lib/categories/registry";
@@ -32,6 +36,19 @@ const listingPhotoUrlSchema = z
   .string()
   .url()
   .refine(isAllowedImageUrl, "Photo URL must be hosted on an allowed image host.");
+
+/**
+ * Replaces a free-text "times worn/used" field with a fixed 3-option
+ * dropdown (design/UX pass, 2026-08-09) — easy for anyone to answer,
+ * still optional. Exported so the sell form's dropdown and this schema
+ * can never drift apart.
+ */
+export const TIMES_USED_VALUES = ["never_worn", "worn_a_few_times", "worn_often"] as const;
+export const TIMES_USED_LABELS: Record<(typeof TIMES_USED_VALUES)[number], string> = {
+  never_worn: "Never worn",
+  worn_a_few_times: "Worn a few times",
+  worn_often: "Worn often",
+};
 
 export function buildListingSubmissionSchema(category: CategoryConfig) {
   return z
@@ -54,7 +71,7 @@ export function buildListingSubmissionSchema(category: CategoryConfig) {
       // optional, no minimum length, never required.
       conditionNotes: z.string().trim().max(1000).optional(),
       reasonForSelling: z.string().trim().max(500).optional(),
-      timesUsed: z.string().trim().max(100).optional(),
+      timesUsed: z.enum(TIMES_USED_VALUES).optional(),
       photoUrls: z
         .array(listingPhotoUrlSchema)
         .min(category.minPhotos, `At least ${category.minPhotos} photos are required for ${category.displayName}.`)

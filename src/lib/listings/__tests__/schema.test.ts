@@ -42,13 +42,18 @@ describe("buildListingSubmissionSchema (PRD §7.1/§6.3)", () => {
 
   it("accepts optional reasonForSelling and timesUsed, general to every category", () => {
     const result = schema.safeParse(
-      validPayload({ reasonForSelling: "No longer my shade", timesUsed: "Twice" })
+      validPayload({ reasonForSelling: "No longer my shade", timesUsed: "worn_a_few_times" })
     );
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.reasonForSelling).toBe("No longer my shade");
-      expect(result.data.timesUsed).toBe("Twice");
+      expect(result.data.timesUsed).toBe("worn_a_few_times");
     }
+  });
+
+  it("rejects a free-text timesUsed value — replaced with a fixed 3-option dropdown (design/UX pass, 2026-08-09)", () => {
+    const result = schema.safeParse(validPayload({ timesUsed: "Twice" }));
+    expect(result.success).toBe(false);
   });
 
   it("rejects fewer photos than the category minimum", () => {

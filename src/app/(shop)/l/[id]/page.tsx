@@ -17,6 +17,7 @@ import { ResendConfirmationForm } from "@/components/auth/resend-confirmation-fo
 import { formatKobo } from "@/lib/money";
 import { after } from "next/server";
 import { track } from "@/lib/analytics/track-server";
+import { TIMES_USED_LABELS } from "@/lib/listings/schema";
 
 type Params = { id: string };
 
@@ -189,7 +190,9 @@ export default async function ListingDetailPage({ params }: { params: Promise<Pa
               {listing.timesUsed ? (
                 <div>
                   <dt className="text-zinc-500 dark:text-zinc-400">Times worn or used</dt>
-                  <dd className="text-zinc-900 dark:text-zinc-50">{listing.timesUsed}</dd>
+                  <dd className="text-zinc-900 dark:text-zinc-50">
+                    {TIMES_USED_LABELS[listing.timesUsed as keyof typeof TIMES_USED_LABELS] ?? listing.timesUsed}
+                  </dd>
                 </div>
               ) : null}
               {listing.reasonForSelling ? (
