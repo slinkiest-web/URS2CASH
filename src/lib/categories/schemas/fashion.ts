@@ -8,7 +8,7 @@ import { z } from "zod";
 import { ALL_CONDITIONS } from "../shared";
 import type { SubcategoryGroups } from "../registry";
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const FASHION_SLUG = "fashion" as const;
 export const FASHION_ALLOWED_CONDITIONS = ALL_CONDITIONS;
@@ -141,7 +141,8 @@ const fashionBaseSchema = z
     // Replaces the old size_system + size_value pair with one free-text
     // field — a Nigerian resale seller's "size" is often a label read off
     // the garment tag, not a value that cleanly resolves to one sizing
-    // system (design/UX pass, 2026-08-07).
+    // system (design/UX pass, 2026-08-07). Required for clothing groups —
+    // see SIZE_REQUIRED_GROUPS and the superRefine below (2026-08-09).
     size: z.string().trim().min(1).max(20).optional(),
     colour: z.string().trim().min(1).max(40).optional(),
     material: z.string().trim().max(60).optional(),
@@ -163,6 +164,16 @@ const fashionBaseSchema = z
   })
   .strict();
 
+/**
+ * Size matters for buying clothes, but not the same way for accessories/
+ * bags/shoes (design/UX pass, 2026-08-09 — explicit instruction named
+ * Tops/Dresses/Trousers/Sets/Activewear; Traditional added by the same
+ * reasoning — it's clothing too. Shoes deliberately excluded, matching
+ * the explicit instruction literally even though shoes do have sizes in
+ * real life).
+ */
+const SIZE_REQUIRED_GROUPS: readonly FashionGroup[] = ["tops", "dresses", "trousers", "sets", "activewear", "traditional"];
+
 export const fashionAttributesSchema = fashionBaseSchema.superRefine((data, ctx) => {
   // product_subtype, when supplied, must actually belong to the chosen group.
   if (data.product_subtype !== undefined) {
@@ -176,6 +187,13 @@ export const fashionAttributesSchema = fashionBaseSchema.superRefine((data, ctx)
     }
   }
 
+  if (SIZE_REQUIRED_GROUPS.includes(data.product_group) && data.size === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["size"],
+      message: `size is required for ${data.product_group} (design/UX pass, 2026-08-09).`,
+    });
+  }
 });
 
 export type FashionAttributes = z.infer<typeof fashionAttributesSchema>;

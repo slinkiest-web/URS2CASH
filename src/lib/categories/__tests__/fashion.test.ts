@@ -18,6 +18,7 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
     const result = fashionAttributesSchema.safeParse({
       condition: "brand_new",
       product_group: "dresses",
+      size: "UK 10",
       gender: "womens",
     });
     expect(result.success).toBe(true);
@@ -27,6 +28,7 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
     const result = fashionAttributesSchema.safeParse({
       condition: "brand_new",
       product_group: "tops",
+      size: "M",
     });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.gender).toBe("unisex");
@@ -37,6 +39,7 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
       condition: "used",
       product_group: "trousers",
       product_subtype: "jeans",
+      size: "32",
       gender: "mens",
     });
     expect(result.success).toBe(true);
@@ -83,6 +86,7 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
       condition: "used",
       product_group: "trousers",
       product_subtype: "jeans",
+      size: "32",
       gender: "womens",
     });
     expect(result.success).toBe(true);
@@ -124,6 +128,7 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
       condition: "brand_new",
       product_group: "tops",
       product_subtype: "jackets",
+      size: "L",
       gender: "mens",
     });
     expect(result.success).toBe(true);
@@ -144,6 +149,7 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
         condition: "brand_new",
         product_group: "traditional",
         product_subtype,
+        size: "M",
         gender: "unisex",
       });
       expect(result.success).toBe(true);
@@ -156,6 +162,7 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
         condition: "brand_new",
         product_group: "activewear",
         product_subtype,
+        size: "M",
         gender: "unisex",
       });
       expect(result.success).toBe(true);
@@ -168,9 +175,35 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
         condition: "brand_new",
         product_group: "activewear",
         product_subtype,
+        size: "M",
         gender: "unisex",
       });
       expect(result.success).toBe(false);
+    }
+  });
+
+  it("rejects a missing size for every clothing group (design/UX pass, 2026-08-09) — size matters for buying clothes", () => {
+    for (const product_group of ["tops", "dresses", "trousers", "sets", "activewear", "traditional"]) {
+      const result = fashionAttributesSchema.safeParse({
+        condition: "brand_new",
+        product_group,
+        gender: "unisex",
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.some((i) => i.path.join(".") === "size")).toBe(true);
+      }
+    }
+  });
+
+  it("does not require size for Bags/Accessories/Shoes/Other — doesn't apply the same way", () => {
+    for (const product_group of ["bags", "accessories", "shoes", "other"]) {
+      const result = fashionAttributesSchema.safeParse({
+        condition: "brand_new",
+        product_group,
+        gender: "unisex",
+      });
+      expect(result.success).toBe(true);
     }
   });
 

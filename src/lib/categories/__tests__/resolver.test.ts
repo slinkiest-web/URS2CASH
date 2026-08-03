@@ -84,6 +84,7 @@ describe("resolveCategoryAttributes", () => {
       condition: "brand_new",
       product_group: "activewear",
       product_subtype: "leggings",
+      size: "M",
     });
     expect(result.ok).toBe(true);
   });
