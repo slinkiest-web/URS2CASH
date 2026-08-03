@@ -32,10 +32,10 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
     if (result.success) expect(result.data.gender).toBe("unisex");
   });
 
-  it("accepts a group with a matching subtype (bottoms/jeans)", () => {
+  it("accepts a group with a matching subtype (trousers/jeans) — 'Bottoms' renamed to 'Trousers' 2026-08-09", () => {
     const result = fashionAttributesSchema.safeParse({
       condition: "used",
-      product_group: "bottoms",
+      product_group: "trousers",
       product_subtype: "jeans",
       gender: "mens",
     });
@@ -70,7 +70,7 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
   it("no longer has times_worn_band/wear_signs at all — superseded by the generic listing-level Times worn/used field", () => {
     const result = fashionAttributesSchema.safeParse({
       condition: "used",
-      product_group: "bottoms",
+      product_group: "trousers",
       product_subtype: "jeans",
       gender: "womens",
       times_worn_band: "2_to_5",
@@ -81,7 +81,7 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
   it("accepts a used listing with no wear information at all — never forced", () => {
     const result = fashionAttributesSchema.safeParse({
       condition: "used",
-      product_group: "bottoms",
+      product_group: "trousers",
       product_subtype: "jeans",
       gender: "womens",
     });
@@ -117,6 +117,37 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
       extra_field: true,
     });
     expect(result.success).toBe(false);
+  });
+
+  it("accepts Tops with a jackets/coats subtype — Outerwear folded into Tops 2026-08-09", () => {
+    const result = fashionAttributesSchema.safeParse({
+      condition: "brand_new",
+      product_group: "tops",
+      product_subtype: "jackets",
+      gender: "mens",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects outerwear as an unknown product_group — removed, folded into tops", () => {
+    const result = fashionAttributesSchema.safeParse({
+      condition: "brand_new",
+      product_group: "outerwear",
+      gender: "mens",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts Traditional as its own top-level group with real subtypes", () => {
+    for (const product_subtype of ["ankara", "agbada", "aso_ebi", "buba", "kaftan"]) {
+      const result = fashionAttributesSchema.safeParse({
+        condition: "brand_new",
+        product_group: "traditional",
+        product_subtype,
+        gender: "unisex",
+      });
+      expect(result.success).toBe(true);
+    }
   });
 
   it("rejects a missing product_group — required, unlike product_subtype", () => {
