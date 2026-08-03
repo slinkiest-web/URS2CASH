@@ -14,6 +14,8 @@ export const GYM_ACTIVEWEAR_ALLOWED_CONDITIONS = ALL_CONDITIONS;
 export const GYM_ACTIVEWEAR_MIN_PHOTOS = 1;
 export const GYM_ACTIVEWEAR_USAGE_INDICATOR_FIELDS = [] as const;
 
+// socks removed (design/UX pass, 2026-08-09) — this marketplace doesn't
+// resell used intimate/hygiene items.
 export const GYM_ACTIVEWEAR_PRODUCT_TYPES = [
   "leggings",
   "sports_bra",
@@ -22,7 +24,6 @@ export const GYM_ACTIVEWEAR_PRODUCT_TYPES = [
   "jacket",
   "tracksuit",
   "gym_shoes",
-  "socks",
   "set",
   "other",
 ] as const;

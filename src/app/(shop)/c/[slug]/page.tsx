@@ -66,8 +66,11 @@ export default async function CategoryPage({
   // product_group/product_subtype/gender get dedicated tab/pill UI below,
   // never the generic dropdown list — filtered out by name, not category
   // slug, so any future category with these field names gets the same
-  // treatment for free (§12.3).
-  const SPECIAL_FILTER_NAMES = new Set(["product_group", "product_subtype", "gender"]);
+  // treatment for free (§12.3). size_unit/pao_months are dropped from
+  // browse filters entirely (design/UX pass, 2026-08-09) — confusing
+  // jargon for most buyers; the fields still exist on the listing itself,
+  // just aren't filterable/browsable.
+  const SPECIAL_FILTER_NAMES = new Set(["product_group", "product_subtype", "gender", "size_unit", "pao_months"]);
   const attributeFilterDescriptors = allAttributeFilterDescriptors.filter((f) => !SPECIAL_FILTER_NAMES.has(f.name));
 
   const priceMinNaira = first(resolvedSearchParams["price_min"]);

@@ -28,7 +28,6 @@ describe("gym/activewear attribute schema (new category, design/UX pass 2026-08-
       "jacket",
       "tracksuit",
       "gym_shoes",
-      "socks",
       "set",
       "other",
     ];
@@ -42,6 +41,14 @@ describe("gym/activewear attribute schema (new category, design/UX pass 2026-08-
     const result = gymActivewearAttributesSchema.safeParse({
       condition: "brand_new",
       product_type: "swim_trunks",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects socks — removed entirely 2026-08-09, this marketplace doesn't resell used intimate/hygiene items", () => {
+    const result = gymActivewearAttributesSchema.safeParse({
+      condition: "brand_new",
+      product_type: "socks",
     });
     expect(result.success).toBe(false);
   });

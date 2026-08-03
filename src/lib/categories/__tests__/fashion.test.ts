@@ -55,37 +55,16 @@ describe("fashion attribute schema (PRD §6.4.2, restructured 2026-08-07)", () =
     }
   });
 
-  it("rejects underwear listed as used", () => {
-    const result = fashionAttributesSchema.safeParse({
-      condition: "used",
-      product_group: "other",
-      product_subtype: "underwear",
-      gender: "womens",
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.some((i) => i.path.join(".") === "condition")).toBe(true);
+  it("rejects underwear/swimwear/socks as unknown subtype keys — removed entirely 2026-08-09, this marketplace doesn't resell used intimate/hygiene items", () => {
+    for (const product_subtype of ["underwear", "swimwear", "socks"]) {
+      const result = fashionAttributesSchema.safeParse({
+        condition: "brand_new",
+        product_group: "other",
+        product_subtype,
+        gender: "womens",
+      });
+      expect(result.success).toBe(false);
     }
-  });
-
-  it("rejects socks listed as used", () => {
-    const result = fashionAttributesSchema.safeParse({
-      condition: "used",
-      product_group: "accessories",
-      product_subtype: "socks",
-      gender: "unisex",
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it("accepts underwear as brand_new", () => {
-    const result = fashionAttributesSchema.safeParse({
-      condition: "brand_new",
-      product_group: "other",
-      product_subtype: "underwear",
-      gender: "womens",
-    });
-    expect(result.success).toBe(true);
   });
 
   it("no longer has times_worn_band/wear_signs at all — superseded by the generic listing-level Times worn/used field", () => {

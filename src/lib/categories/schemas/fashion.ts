@@ -23,11 +23,11 @@ export const FASHION_MIN_PHOTOS = 1;
 export const FASHION_USAGE_INDICATOR_FIELDS = [] as const;
 
 /**
- * Two-level taxonomy (design/UX pass, 2026-08-07). Every one of the 20
- * pre-restructure `product_type` values maps somewhere in here. Four had no
- * clean fit in the requested 8-group list (suit, traditional, underwear,
- * swimwear) — see the inline notes; "Other" was added as a 9th group so
- * none of them become unlistable.
+ * Two-level taxonomy (design/UX pass, 2026-08-07, swimwear/underwear/socks
+ * removed entirely 2026-08-09 — this marketplace doesn't resell used
+ * intimate/hygiene items). `suit`/`traditional` had no clean fit in the
+ * requested 8-group list — see the inline notes; "Other" was added as a
+ * 9th group so nothing becomes unlistable.
  */
 export const FASHION_GROUPS = [
   "tops",
@@ -63,21 +63,15 @@ export const FASHION_SUBCATEGORY_GROUPS: SubcategoryGroups = {
       scarves: "Scarves",
       hats: "Hats",
       watches: "Watches",
-      // Added beyond the requested list — socks are conventionally an
-      // accessory and had no other home.
-      socks: "Socks",
     },
   },
   // Catch-all added beyond the requested 8 groups so nothing becomes
-  // unlistable. Given explicit subtypes (not left bare) so old `underwear`
-  // and `swimwear` keep the §6.4.2 "may not be listed as used" HARD RULE
-  // enforceable, and so `traditional` (Nigerian traditional wear — a real,
-  // likely significant category with no clean fit in an ASOS-style
-  // taxonomy, worth a dedicated follow-up) is at least identifiable rather
-  // than disappearing into an undifferentiated "Other".
+  // unlistable. `traditional` (Nigerian traditional wear) is at least
+  // identifiable rather than disappearing into an undifferentiated
+  // "Other" — pending a dedicated promotion to its own group.
   other: {
     label: "Other",
-    subtypes: { underwear: "Underwear", swimwear: "Swimwear", traditional: "Traditional Wear" },
+    subtypes: { traditional: "Traditional Wear" },
   },
 };
 
@@ -97,14 +91,8 @@ export const FASHION_SUBTYPES = [
   "scarves",
   "hats",
   "watches",
-  "socks",
-  "underwear",
-  "swimwear",
   "traditional",
 ] as const;
-
-/** §6.4.2 HARD RULE: underwear, swimwear, and socks may not be listed as `used`. */
-const NO_USED_SUBTYPES: readonly string[] = ["underwear", "swimwear", "socks"];
 
 const fashionBaseSchema = z
   .object({
@@ -151,18 +139,6 @@ export const fashionAttributesSchema = fashionBaseSchema.superRefine((data, ctx)
     }
   }
 
-  // §6.4.2 HARD RULE: underwear, swimwear, and socks may not be listed as
-  // used, whenever the subtype is explicitly supplied. Known gap, same
-  // shape as Beauty's hygiene-sensitivity note: since product_subtype is
-  // optional, a seller can dodge this by picking the group (Other,
-  // Accessories) without the specific subtype.
-  if (data.condition === "used" && data.product_subtype !== undefined && NO_USED_SUBTYPES.includes(data.product_subtype)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["condition"],
-      message: `${data.product_subtype} may not be listed as used (PRD §6.4.2).`,
-    });
-  }
 });
 
 export type FashionAttributes = z.infer<typeof fashionAttributesSchema>;
