@@ -26,7 +26,14 @@ export type ListingCardData = {
    * itself says a trust signal that isn't real must not render.
    */
   sellerHandle?: string;
-  /** Seller's `profiles.state` (public column) — the "location" half of the meta row. */
+  /**
+   * The "location" half of the meta row — the listing's own
+   * `location_state` when the seller set one (design/UX pass, 2026-08-09),
+   * falling back to the seller's `profiles.state` (public column)
+   * otherwise. The prop name predates the per-listing override; kept as-is
+   * to avoid churn, but it's "this card's displayed location," not
+   * necessarily the seller's own.
+   */
   sellerLocation?: string | null;
 };
 

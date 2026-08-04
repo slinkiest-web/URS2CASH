@@ -185,8 +185,16 @@ export default async function ListingDetailPage({ params }: { params: Promise<Pa
           {/* Optional listing-level fields added in the sell-flow
               friction-removal pass (2026-08-07) — shown only when the
               seller actually filled them in. */}
-          {listing.timesUsed || listing.reasonForSelling ? (
+          {listing.timesUsed || listing.reasonForSelling || listing.locationState ? (
             <dl className="grid grid-cols-2 gap-3 text-sm">
+              {listing.locationState ? (
+                <div>
+                  <dt className="text-zinc-500 dark:text-zinc-400">Location</dt>
+                  <dd className="text-zinc-900 dark:text-zinc-50">
+                    {listing.locationCity ? `${listing.locationCity}, ${listing.locationState}` : listing.locationState}
+                  </dd>
+                </div>
+              ) : null}
               {listing.timesUsed ? (
                 <div>
                   <dt className="text-zinc-500 dark:text-zinc-400">Times worn or used</dt>

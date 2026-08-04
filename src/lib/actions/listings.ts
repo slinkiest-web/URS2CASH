@@ -105,6 +105,8 @@ export async function createListing(input: CreateListingInput): Promise<Result<{
       condition_notes: data.conditionNotes,
       reason_for_selling: data.reasonForSelling,
       times_used: data.timesUsed,
+      location_state: data.locationState,
+      location_city: data.locationCity,
       status,
       attributes: data.attributes as Json, // Zod-validated, JSON-safe by construction
       attribute_schema_version: data.categoryConfig.schemaVersion,
@@ -173,6 +175,8 @@ export type UpdateListingInput = {
   conditionNotes?: string;
   reasonForSelling?: string;
   timesUsed?: string;
+  locationState?: string;
+  locationCity?: string;
   attributes?: Record<string, unknown>;
   photoUrls?: string[];
   flawPhotoIndexes?: number[];
@@ -249,6 +253,8 @@ export async function updateListing(input: UpdateListingInput): Promise<Result<v
     conditionNotes: input.conditionNotes ?? listing.condition_notes ?? undefined,
     reasonForSelling: input.reasonForSelling ?? listing.reason_for_selling ?? undefined,
     timesUsed: input.timesUsed ?? listing.times_used ?? undefined,
+    locationState: input.locationState ?? listing.location_state ?? undefined,
+    locationCity: input.locationCity ?? listing.location_city ?? undefined,
     attributes: input.attributes ?? (listing.attributes as Record<string, unknown>),
     photoUrls: input.photoUrls ?? listing.photo_urls,
     flawPhotoIndexes: input.flawPhotoIndexes ?? listing.flaw_photo_indexes,
@@ -312,6 +318,8 @@ export async function updateListing(input: UpdateListingInput): Promise<Result<v
       condition_notes: data.conditionNotes,
       reason_for_selling: data.reasonForSelling,
       times_used: data.timesUsed,
+      location_state: data.locationState,
+      location_city: data.locationCity,
       attributes: data.attributes as Json,
       attribute_schema_version: data.categoryConfig.schemaVersion,
       photo_urls: data.photoUrls,

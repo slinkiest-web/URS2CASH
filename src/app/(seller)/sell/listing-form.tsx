@@ -13,6 +13,9 @@ import { uploadListingPhoto } from "@/lib/storage/upload-listing-photo";
 import { track } from "@/lib/analytics/track-client";
 import { nairaToKobo, formatKobo } from "@/lib/money";
 import { TIMES_USED_VALUES, TIMES_USED_LABELS } from "@/lib/listings/schema";
+import { nigerianStateSchema } from "@/lib/validation";
+
+const NIGERIAN_STATES = nigerianStateSchema.options;
 
 export type SellableCategory = {
   slug: CategorySlug;
@@ -94,6 +97,8 @@ export type ExistingListing = {
   conditionNotes: string | null;
   reasonForSelling: string | null;
   timesUsed: string | null;
+  locationState: string | null;
+  locationCity: string | null;
   attributes: Record<string, unknown>;
   photoUrls: string[];
   flawPhotoIndexes: number[];
@@ -116,6 +121,8 @@ type StoredDraft = {
   conditionNotes: string;
   reasonForSelling: string;
   timesUsed: string;
+  locationState: string;
+  locationCity: string;
   hasFlaws: boolean;
   attributeValues: Record<string, unknown>;
 };
@@ -297,12 +304,15 @@ export function ListingForm({
   isFirstListing,
   existingListing,
   defaultCategorySlug,
+  defaultLocationState,
 }: {
   categories: SellableCategory[];
   sellerId: string;
   isFirstListing: boolean;
   existingListing?: ExistingListing;
   defaultCategorySlug?: CategorySlug;
+  /** Seller's profile.state, if set — a one-tap default, never forced (design/UX pass, 2026-08-09). */
+  defaultLocationState?: string;
 }) {
   const router = useRouter();
   const isEditing = existingListing !== undefined;
@@ -325,6 +335,10 @@ export function ListingForm({
   );
   const [reasonForSelling, setReasonForSelling] = useState(existingListing?.reasonForSelling ?? "");
   const [timesUsed, setTimesUsed] = useState(existingListing?.timesUsed ?? "");
+  const [locationState, setLocationState] = useState(
+    existingListing?.locationState ?? defaultLocationState ?? ""
+  );
+  const [locationCity, setLocationCity] = useState(existingListing?.locationCity ?? "");
   // "Does this item have any flaws?" — independent of condition, always
   // optional, never blocking. Pre-checked on edit only if there's already
   // something to show for it.
@@ -371,6 +385,8 @@ export function ListingForm({
     setConditionNotes(draft.conditionNotes);
     setReasonForSelling(draft.reasonForSelling ?? "");
     setTimesUsed(draft.timesUsed ?? "");
+    setLocationState(draft.locationState ?? defaultLocationState ?? "");
+    setLocationCity(draft.locationCity ?? "");
     setHasFlaws(draft.hasFlaws ?? false);
     setAttributeValues(draft.attributeValues);
     setDraftStartedAt(Date.now());
@@ -398,6 +414,8 @@ export function ListingForm({
         conditionNotes,
         reasonForSelling,
         timesUsed,
+        locationState,
+        locationCity,
         hasFlaws,
         attributeValues,
       };
@@ -414,6 +432,8 @@ export function ListingForm({
     conditionNotes,
     reasonForSelling,
     timesUsed,
+    locationState,
+    locationCity,
     hasFlaws,
     attributeValues,
   ]);
@@ -522,6 +542,8 @@ export function ListingForm({
         conditionNotes: submittedConditionNotes,
         reasonForSelling: reasonForSelling || undefined,
         timesUsed: timesUsed || undefined,
+        locationState: locationState || undefined,
+        locationCity: locationCity || undefined,
         attributes: attributeValues,
         photoUrls,
         flawPhotoIndexes: submittedFlawPhotoIndexes,
@@ -555,6 +577,8 @@ export function ListingForm({
       conditionNotes: submittedConditionNotes,
       reasonForSelling: reasonForSelling || undefined,
       timesUsed: timesUsed || undefined,
+      locationState: locationState || undefined,
+      locationCity: locationCity || undefined,
       attributes: attributeValues,
       photoUrls,
       flawPhotoIndexes: submittedFlawPhotoIndexes,
@@ -597,6 +621,11 @@ export function ListingForm({
     setConditionNotes("");
     setReasonForSelling("");
     setTimesUsed("");
+    // Resets to the same profile.state default, not the just-published
+    // listing's value — a per-listing override shouldn't silently apply to
+    // the next, unrelated item.
+    setLocationState(defaultLocationState ?? "");
+    setLocationCity("");
     setHasFlaws(false);
     setPhotos([]);
     setFlawPhotoIndexes([]);
@@ -798,6 +827,39 @@ export function ListingForm({
               ))}
             </select>
           </label>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <label className="flex flex-1 flex-col gap-1.5">
+              <span className={fieldLabelClass}>
+                State <span className={fieldHintClass}>(optional)</span>
+              </span>
+              <select
+                value={locationState}
+                onChange={(e) => setLocationState(e.target.value)}
+                className={selectClass}
+              >
+                <option value="">Select…</option>
+                {NIGERIAN_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-1 flex-col gap-1.5">
+              <span className={fieldLabelClass}>
+                City <span className={fieldHintClass}>(optional)</span>
+              </span>
+              <input
+                type="text"
+                value={locationCity}
+                onChange={(e) => setLocationCity(e.target.value)}
+                maxLength={60}
+                placeholder="e.g. Ikeja"
+                className={inputBaseClass}
+              />
+            </label>
+          </div>
 
           <div className="flex flex-col gap-3 rounded-[var(--u2c-radius-card)] border border-u2c-line bg-u2c-surface p-4">
             <label className="flex items-center gap-2 text-[14px] font-semibold text-u2c-ink">

@@ -3,9 +3,10 @@
  *
  * This validates the fields that live on `listings` directly, never in the
  * category `attributes` JSONB — title, description, price_kobo, photo_urls,
- * flaw_photo_indexes, condition_notes, reason_for_selling, times_used.
- * Category-specific attributes and `condition` membership are validated
- * separately by `resolveCategoryAttributes` (src/lib/categories/resolver.ts).
+ * flaw_photo_indexes, condition_notes, reason_for_selling, times_used,
+ * location_state, location_city. Category-specific attributes and
+ * `condition` membership are validated separately by
+ * `resolveCategoryAttributes` (src/lib/categories/resolver.ts).
  *
  * Design/UX pass (2026-08-07): only title, price, condition, and 1+ photo
  * are required to publish. Everything else here — description,
@@ -22,6 +23,7 @@
 import { z } from "zod";
 import type { CategoryConfig } from "@/lib/categories/registry";
 import { isAllowedImageUrl } from "@/lib/images/allowed-hosts";
+import { nigerianStateSchema } from "@/lib/validation";
 
 /**
  * §5.3: every photo URL must resolve to a host next/image is actually
@@ -72,6 +74,11 @@ export function buildListingSubmissionSchema(category: CategoryConfig) {
       conditionNotes: z.string().trim().max(1000).optional(),
       reasonForSelling: z.string().trim().max(500).optional(),
       timesUsed: z.enum(TIMES_USED_VALUES).optional(),
+      // Per-listing location (design/UX pass, 2026-08-09) — defaults from
+      // the seller's profile.state in the UI (never forced), overridable
+      // per listing. City is a free-text add-on, independent of state.
+      locationState: nigerianStateSchema.optional(),
+      locationCity: z.string().trim().max(60).optional(),
       photoUrls: z
         .array(listingPhotoUrlSchema)
         .min(category.minPhotos, `At least ${category.minPhotos} photos are required for ${category.displayName}.`)

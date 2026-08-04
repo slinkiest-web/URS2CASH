@@ -166,6 +166,8 @@ export type Database = {
           description: string
           flaw_photo_indexes: number[]
           id: string
+          location_city: string | null
+          location_state: string | null
           photo_urls: string[]
           price_kobo: number
           published_at: string | null
@@ -190,6 +192,8 @@ export type Database = {
           description: string
           flaw_photo_indexes?: number[]
           id?: string
+          location_city?: string | null
+          location_state?: string | null
           photo_urls: string[]
           price_kobo: number
           published_at?: string | null
@@ -214,6 +218,8 @@ export type Database = {
           description?: string
           flaw_photo_indexes?: number[]
           id?: string
+          location_city?: string | null
+          location_state?: string | null
           photo_urls?: string[]
           price_kobo?: number
           published_at?: string | null
@@ -1090,6 +1096,8 @@ export type Database = {
           description: string
           flaw_photo_indexes: number[]
           id: string
+          location_city: string | null
+          location_state: string | null
           photo_urls: string[]
           price_kobo: number
           published_at: string | null
@@ -1551,6 +1559,8 @@ export type Database = {
           description: string
           flaw_photo_indexes: number[]
           id: string
+          location_city: string | null
+          location_state: string | null
           photo_urls: string[]
           price_kobo: number
           published_at: string | null

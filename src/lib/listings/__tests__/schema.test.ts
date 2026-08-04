@@ -56,6 +56,29 @@ describe("buildListingSubmissionSchema (PRD §7.1/§6.3)", () => {
     expect(result.success).toBe(false);
   });
 
+  it("accepts optional per-listing location (state + city), independent of the seller's profile default", () => {
+    const result = schema.safeParse(validPayload({ locationState: "Lagos", locationCity: "Ikeja" }));
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.locationState).toBe("Lagos");
+      expect(result.data.locationCity).toBe("Ikeja");
+    }
+  });
+
+  it("accepts a listing with no location at all — never forced", () => {
+    const result = schema.safeParse(validPayload());
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.locationState).toBeUndefined();
+      expect(result.data.locationCity).toBeUndefined();
+    }
+  });
+
+  it("rejects a locationState that isn't a real Nigerian state", () => {
+    const result = schema.safeParse(validPayload({ locationState: "Lagos City" }));
+    expect(result.success).toBe(false);
+  });
+
   it("rejects fewer photos than the category minimum", () => {
     const result = schema.safeParse(validPayload({ photoUrls: [] }));
     expect(result.success).toBe(false);

@@ -59,6 +59,12 @@ export default async function SellPage({
     .select("id", { count: "exact", head: true })
     .eq("seller_id", user.id);
 
+  // Per-listing location (design/UX pass, 2026-08-09): defaults from the
+  // seller's own profile.state when they have one set — never forced, just
+  // a one-tap starting point the seller can override per listing.
+  const { data: profile } = await supabase.from("profiles").select("state").eq("id", user.id).single();
+  const defaultLocationState = profile?.state ?? undefined;
+
   let existingListing: ExistingListing | undefined;
   let defaultCategorySlug: CategorySlug | undefined;
 
@@ -90,6 +96,8 @@ export default async function SellPage({
           conditionNotes: row.condition_notes,
           reasonForSelling: row.reason_for_selling,
           timesUsed: row.times_used,
+          locationState: row.location_state,
+          locationCity: row.location_city,
           attributes: (row.attributes as Record<string, unknown>) ?? {},
           photoUrls: row.photo_urls,
           flawPhotoIndexes: row.flaw_photo_indexes,
@@ -164,6 +172,7 @@ export default async function SellPage({
             isFirstListing={(existingListingCount ?? 0) === 0}
             existingListing={existingListing}
             defaultCategorySlug={defaultCategorySlug}
+            defaultLocationState={defaultLocationState}
           />
         </div>
       </div>

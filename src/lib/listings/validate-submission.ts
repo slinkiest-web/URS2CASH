@@ -16,6 +16,8 @@ export type ListingSubmissionRaw = {
   conditionNotes?: string;
   reasonForSelling?: string;
   timesUsed?: string;
+  locationState?: string;
+  locationCity?: string;
   /** Category-specific fields only — `condition` is supplied separately above. */
   attributes: Record<string, unknown>;
   photoUrls: string[];
@@ -31,6 +33,8 @@ export type ValidatedListingSubmission = {
   conditionNotes: string | null;
   reasonForSelling: string | null;
   timesUsed: string | null;
+  locationState: string | null;
+  locationCity: string | null;
   photoUrls: string[];
   flawPhotoIndexes: number[];
   /** condition already stripped out — category attrs only. */
@@ -62,6 +66,8 @@ export function validateListingSubmission(raw: ListingSubmissionRaw): ListingVal
     conditionNotes: raw.conditionNotes,
     reasonForSelling: raw.reasonForSelling,
     timesUsed: raw.timesUsed,
+    locationState: raw.locationState,
+    locationCity: raw.locationCity,
     photoUrls: raw.photoUrls,
     flawPhotoIndexes: raw.flawPhotoIndexes ?? [],
   });
@@ -104,6 +110,8 @@ export function validateListingSubmission(raw: ListingSubmissionRaw): ListingVal
       conditionNotes: listingParsed.data.conditionNotes ?? null,
       reasonForSelling: listingParsed.data.reasonForSelling ?? null,
       timesUsed: listingParsed.data.timesUsed ?? null,
+      locationState: listingParsed.data.locationState ?? null,
+      locationCity: listingParsed.data.locationCity ?? null,
       photoUrls: listingParsed.data.photoUrls,
       flawPhotoIndexes: listingParsed.data.flawPhotoIndexes,
       attributes,

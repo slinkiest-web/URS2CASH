@@ -23,7 +23,7 @@ function isCategorySlug(value: string): value is CategorySlug {
 }
 
 function toCardData(
-  listing: Pick<ListingRow, "id" | "title" | "price_kobo" | "condition" | "photo_urls">,
+  listing: Pick<ListingRow, "id" | "title" | "price_kobo" | "condition" | "photo_urls" | "location_state">,
   categoryName?: string,
   seller?: SellerInfo
 ): ListingCardData {
@@ -36,7 +36,9 @@ function toCardData(
     secondPhotoUrl: listing.photo_urls[1] ?? null,
     categoryName,
     sellerHandle: seller?.handle,
-    sellerLocation: seller?.state ?? null,
+    // Per-listing location (design/UX pass, 2026-08-09) overrides the
+    // seller's profile.state default, never the other way round.
+    sellerLocation: listing.location_state ?? seller?.state ?? null,
   };
 }
 
@@ -134,7 +136,7 @@ export async function getCategoryBySlug(supabase: Client, slug: string): Promise
 export async function getRecentlyListed(supabase: Client, limit = 8): Promise<ListingCardData[]> {
   const { data } = await supabase
     .from("listings")
-    .select("id, title, price_kobo, condition, photo_urls, category_id, seller_id")
+    .select("id, title, price_kobo, condition, photo_urls, location_state, category_id, seller_id")
     .eq("status", "published")
     .order("published_at", { ascending: false })
     .limit(limit);
@@ -234,7 +236,7 @@ export async function getCategoryListings(
 
   let query = supabase
     .from("listings")
-    .select("id, title, price_kobo, condition, photo_urls, seller_id")
+    .select("id, title, price_kobo, condition, photo_urls, location_state, seller_id")
     .eq("category_id", categoryId)
     .eq("status", "published");
 
@@ -272,7 +274,7 @@ export async function getSellerListings(supabase: Client, sellerId: string, page
 
   const { data } = await supabase
     .from("listings")
-    .select("id, title, price_kobo, condition, photo_urls, category_id")
+    .select("id, title, price_kobo, condition, photo_urls, location_state, category_id")
     .eq("seller_id", sellerId)
     .eq("status", "published")
     .order("published_at", { ascending: false })
