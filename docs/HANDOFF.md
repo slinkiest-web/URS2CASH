@@ -1657,3 +1657,58 @@ mobile layout wraps the nav, hero, tiles, and pills without overflow.
 
 **Next within Stage 3:** sign-in/sign-up split-screen imagery, then
 home-page colour warmth (header/footer/value-prop tiles).
+
+---
+
+## Design/UX pass — Stage 3b: sign in / sign up split-screen imagery
+
+Second reviewable chunk of Stage 3. Both auth pages were still on
+pre-redesign shadcn defaults (zinc borders, generic `Button`, no imagery) —
+the design/UX pass hadn't reached them at all until now.
+
+**Completed:**
+- New `src/components/auth/auth-split-screen.tsx`: the shared two-panel
+  shell for both pages. Left panel is a full-height marketing image
+  (`log-in.jpg`, via `AUTH_MARKETING_IMAGE` from Stage 3a's
+  `src/lib/images/marketing.ts`) with a bottom-anchored trust message
+  ("Buy and sell pre-loved, with confidence" / "Your money is safe until
+  you get your item, on every order.") over the same gradient-scrim
+  treatment used elsewhere; right panel is the actual form. Collapses to a
+  shorter image band above the form below `lg` rather than hiding the
+  image outright on mobile — confirmed live at 390px that it still reads
+  well and doesn't push the form below the fold awkwardly.
+- `src/app/(auth)/sign-in/page.tsx`, `sign-in-form.tsx`, and
+  `src/app/(auth)/sign-up/page.tsx` (sign-up has no separate form file, the
+  page IS the form) all rebuilt onto `AuthSplitScreen` and the Editorial
+  Market tokens: Archivo heading, `u2c-line`-bordered 44px inputs with the
+  standard focus ring, a single burgundy Primary CTA per screen (Sign in /
+  Create account), and the shadcn `Button` component dropped in favour of
+  the same plain-element-plus-token-classes pattern every other
+  design-pass surface already uses (category page filters, homepage CTAs),
+  for one consistent system rather than two coexisting button styles.
+  Deliberately did NOT restyle `ResendConfirmationForm`
+  (`src/components/auth/resend-confirmation-form.tsx`) — it's shared with
+  checkout, outside this stage's stated scope, and touching it would
+  restyle a surface nobody asked to review yet.
+- Kept the global `SiteHeader`/`SiteFooter` chrome on both pages (every
+  other page in the app gets them; hiding them for just these two routes
+  would need a root-layout structural change, not asked for and higher
+  risk than the visual win justified) — but did drop a would-be duplicate
+  wordmark from inside the hero panel itself, since `SiteHeader` already
+  shows one immediately above it.
+
+**Verified live:** screenshotted both pages at desktop (1280px) and mobile
+(390px). Then ran an actual functional smoke test through gstack's
+`browse`, not just a visual check: filled and submitted the real sign-in
+form with the demo admin credentials
+(`slinkiest@gmail.com`/`Demo1234!`) — real redirect to `/`, header
+correctly flipped to the signed-in state (Admin/Sell/My listings/Account/
+Sign out), and a direct follow-up request to `/dashboard/profile`
+confirmed the session persisted (200, not bounced to sign-in). Confirms
+the restyle didn't touch anything about the actual `signInAction`
+wiring, form field `name` attributes, or hidden `redirectTo` field.
+`npx tsc --noEmit`, `npx eslint "src/**/*.{ts,tsx}"`, `npx vitest run`
+(186/186, unchanged), and `npm run build` all clean.
+
+**Next within Stage 3:** home-page colour warmth (header/footer/value-prop
+tiles) — the last piece of this stage.

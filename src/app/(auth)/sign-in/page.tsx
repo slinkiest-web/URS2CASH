@@ -1,5 +1,6 @@
 import { SignInForm } from "./sign-in-form";
 import { sanitizeRedirectPath } from "@/lib/safe-redirect";
+import { AuthSplitScreen } from "@/components/auth/auth-split-screen";
 
 const ERROR_MESSAGES: Record<string, string> = {
   confirmation_failed: "That confirmation link is invalid or has expired.",
@@ -20,13 +21,11 @@ export default async function SignInPage({
   const initialError = params.error ? ERROR_MESSAGES[params.error] : undefined;
 
   return (
-    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-6 py-16">
-      <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-        Welcome back to Urs2Cash.
-      </p>
+    <AuthSplitScreen>
+      <h1 className="font-display text-2xl font-extrabold text-u2c-ink sm:text-3xl">Sign in</h1>
+      <p className="mt-1 text-[15px] text-u2c-ink-soft">Welcome back to Urs2Cash.</p>
 
       <SignInForm redirectTo={redirectTo} initialError={initialError} />
-    </main>
+    </AuthSplitScreen>
   );
 }
