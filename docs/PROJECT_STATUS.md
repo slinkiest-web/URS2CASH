@@ -14,6 +14,8 @@
 
 **The build is feature-complete against the PRD as of this session.** This is a handoff snapshot, not a living doc — re-verify anything load-bearing before acting on it.
 
+**Update, design/UX pass (post-build-sequence, in progress):** the sections above are the Prompt-23 snapshot, unchanged. A separate, user-driven design/UX iteration pass started after the build sequence closed — see §3.11 below for what it's done so far (Stages 1, 2, and 2.5, all committed/pushed) and what's next (Stage 3).
+
 ---
 
 ## 0. Environment note for a fresh session
@@ -157,6 +159,34 @@ The last prompt in this build sequence — verify the entire application against
 **19 of 21 numbered DoD items (with every lettered sub-item) pass cleanly, live-verified against a real running app.** Two are flagged rather than silently passed: PostHog event delivery (tooling-gated, no real API key in this environment) and listing-detail Lighthouse LCP (2.9–3.3s vs a 2.5s target, evidence pointing at real CPU contention on this sandboxed machine rather than an identified app defect). Both deployment gates (fresh `db reset`, server-only/env-var split enforced by a live build-failure probe, cron routes authenticated) pass.
 
 This prompt found and fixed two real things a narrower feature prompt could not have caught: a rating-trigger regression that had silently broken every real rating submission since Prompt 19 (§2.1 of the DoD report), and a genuinely missing feature — bank-account resolution — required by DoD item 1 but never built (§2.2). Both fixed and re-verified live this session, not deferred.
+
+---
+
+## 3.11 Design/UX pass (in progress, post-build-sequence)
+
+Distinct from the 23-prompt build sequence above — user-driven visual/UX iteration on the now-feature-complete app, not further PRD-epic building. Started from a home page already redesigned to an ASOS-inspired "Editorial Market" look (urs2cash-ui Revision 4, burgundy accent, committed `ec2659c`). Full detail per stage in `docs/HANDOFF.md`'s "Design/UX pass" entries.
+
+**Stage 1 — sell-flow friction removal (committed, pushed).** Only title, price, category, condition, and 1+ photo are required to publish now. Description and the old always-required "condition notes" merged into one optional field; "does this item have any flaws?" is an independent, always-optional checkbox, decoupled entirely from `condition`. Added optional "Reason for selling" and "Times worn/used" listing-level fields. `/sell` restyled onto the actual Editorial Market design tokens with a supporting image and warmer copy — it had been left on pre-redesign generic styling. Migration `20260807090000`.
+
+**Stage 2 — category restructure (committed, pushed).** Beauty moved to a two-level Face/Lips/Eyes/Brushes & Tools/Skincare/Other group→subtype taxonomy (every legacy `product_type` mapped, nothing left unlistable). Fashion got the same two-level treatment plus a required-with-sensible-default (`unisex`) gender field driving Men/Women category-page filtering, and flipped to `browsable = true`. New Gym & Activewear category (short-lived — merged into Fashion in Stage 2.5c). Registry gained a shared `subcategoryGroups` field driving both the sell form's dependent group→subtype selector and the category page's group tabs, generically, no per-category switch. Migrations `20260808090000`, plus a `seed.sql` fix for an ordering trap found live (categories are only ever created by `seed.sql`, which runs *after* every migration on a `db reset`).
+
+**Stage 2.5 — six further refinement sub-stages (all committed, pushed individually).**
+- **(a)** Removed Beauty's jargon "Size Unit"/"PAO" browse filters; removed swimwear/underwear/socks entirely (this marketplace doesn't resell used intimate/hygiene items).
+- **(b)** Promoted "Traditional" (Ankara/Agbada/Aso-ebi/Buba/Kaftan) from a buried Other-subtype to its own top-level Fashion group; folded "Outerwear" into "Tops"; renamed "Bottoms" to "Trousers" — with a real data migration rewriting existing listings' stored `product_group`, not just the schema going forward.
+- **(c)** Merged Gym & Activewear into Fashion as its "Activewear" subcategory, ranked 2nd (top-3 prominence per explicit instruction) — migrated the real existing listing across categories/attribute shapes, then deleted the now-empty category row (protected by the `listings.category_id` FK). Had to scope a disable/enable of the `prevent_published_listing_core_field_changes` trigger around the migration's own UPDATE, since that trigger correctly blocks a *seller* from changing a published listing's category but isn't meant to block a genuine admin data migration.
+- **(d)** Size is now required (server-validated) for Tops/Dresses/Trousers/Sets/Activewear/Traditional, not for Bags/Accessories/Shoes/Other.
+- **(e)** "Times worn/used" replaced with a fixed 3-option dropdown (Never worn / Worn a few times / Worn often), DB CHECK constraint added.
+- **(f)** Sellers can now set a per-listing location (Nigerian state + optional city, reusing the existing `nigerianStateSchema`), defaulting from the seller's own `profiles.state` but never forced and overridable per listing; shown on the category-page card (state) and listing-detail page (full "City, State").
+
+Migrations `20260809090000` through `20260809120000`.
+
+Every stage above was live-verified against the real running app (not just unit tests) — publishing real listings through the actual `/sell` form, confirming category-page tabs/filters, and in Stage 2.5c specifically confirming a real published listing survived a cross-category data migration end to end. Test count grew from 164 to 186 over the course of this pass; typecheck/lint/build clean at every stage.
+
+**Known, deliberately accepted gaps from this pass** (flagged inline in the relevant schema files, not silently introduced): since `product_subtype` is optional by design, a seller can dodge the hygiene-sensitivity / no-used-for-underwear-swimwear-socks rules by picking only the group; the sell form's generic field renderer still labels conditionally-required fields (Fashion's `size`) as "(optional)" since it derives required-ness purely from the Zod shape — same limitation Gadgets' conditionally-required fields already had, the server-side error message is what actually catches it.
+
+**Environment note:** a local `supabase db reset` wipes `profiles.is_admin` (deliberately never seeded — the only way to grant it is `scripts/promote-admin.ts`, run manually per Decision #80). It also wiped `auth.users` entirely mid-pass once; the admin account (`slinkiest@gmail.com` / `Demo1234!`) was recreated and re-promoted. Re-run `npm run admin:promote -- slinkiest@gmail.com` after any future reset if the "ADMIN" header link disappears.
+
+**Next: Stage 3** — the richer ASOS-style visual treatment for category pages and nav (image tiles, not just text tabs/pills — Stage 2's tabs are functional, not yet the full visual pass), sign-in/sign-up page imagery, and home-page colour warmth, all drawing on the `public/images/marketing/` folder (9 real photos, copied in during Stage 1, only partially used so far).
 
 ---
 

@@ -1379,3 +1379,194 @@ environment.
 
 See `docs/DECISIONS.md` #116+ for this prompt's specific fix/build
 rationale, and `docs/KNOWN_ISSUES.md` for the closed/updated issue list.
+
+---
+
+## Design/UX pass — Stage 1: sell-flow friction removal
+
+Not part of the 23-prompt build sequence above — user-driven visual/UX
+iteration on the now-feature-complete app, starting from a home page
+already redesigned to an ASOS-inspired "Editorial Market" look
+(urs2cash-ui Revision 4, burgundy accent, committed `ec2659c`) before this
+pass began.
+
+**Built:** only title, price, category, condition, and 1+ photo are
+required to publish now. Description and the old always-required
+"condition notes" concept merged into one optional free-text field with no
+minimum length. "Does this item have any flaws?" became an independent,
+always-optional checkbox — never gated on `condition`, never blocking —
+revealing an optional describe field plus optional per-photo flaw tagging
+only on "yes." Added two new optional listing-level fields, generic across
+every category: "Reason for selling" and "Times worn or used." Beauty's
+`expiry_date` became optional, gated behind a "does it have an expiry
+date?" question in the UI rather than always required. `/sell` itself was
+restyled onto the actual Editorial Market design tokens (it had been left
+on generic pre-redesign styling since the home-page redesign), with a
+bordered photo dropzone (upload icon, "Tap to upload photos"), a supporting
+image from the new `public/images/marketing/` folder, and warmer copy.
+
+**Schema/migration:** `20260807090000_sell_flow_friction_removal.sql` —
+drops the two CHECK constraints that forced `condition_notes`/
+`flaw_photo_indexes` whenever `condition = 'used'`, relaxes `description`'s
+length floor to a cap-only check, adds `reason_for_selling`/`times_used`
+columns.
+
+**Verified live:** `database.types.ts` regenerated via the real CLI after
+an environment hiccup (Docker went unhealthy mid-session; a hand-edit was
+used temporarily, then replaced with the genuine generated file once
+Docker recovered — the hand-edit had in fact missed two RPC return-type
+mirrors, confirming why the project's own "never hand-edit" rule exists).
+Published a real listing through the actual `/sell` form with only the
+essentials filled in — zero friction, confirmed the flaws checkbox reveals
+and collapses cleanly both ways.
+
+164 → 183 tests over the course of this stage, typecheck/lint/build clean.
+
+---
+
+## Design/UX pass — Stage 2: category restructure
+
+**Built:** Beauty's flat `product_type` replaced with a two-level
+`product_group` (required) + `product_subtype` (optional) taxonomy — Face,
+Lips, Eyes, Brushes & Tools, Skincare, Other — every one of the 20 legacy
+`product_type` values mapped in, nothing left unlistable. Fashion got the
+same two-level restructure (9 groups, including an added "Other"
+catch-all) plus: gender required-with-a-default (`unisex`, so the dropdown
+is never a blocking blank state) driving new Men/Women category-page
+filtering (exact-match only — a "Men" filter never shows a womens-tagged
+listing and vice versa); a single free-text "size" field replacing
+`size_system`/`size_value`; `brand` made optional; `times_worn_band`/
+`wear_signs` removed outright, superseded by Stage 1's generic
+"Times worn/used" field. Fashion flipped to `browsable = true` (was the
+deliberate "opening soon" founding-seller state). New standalone
+"Gym & Activewear" category (short-lived — merged into Fashion in Stage
+2.5c below). `CategoryConfig` gained a shared `subcategoryGroups` field
+(group → label + subtypes) driving both the sell form's dependent
+group→subtype selector and the category page's group tabs/subtype pills
+generically, for both Beauty and Fashion, with no per-category switch
+(§12.3 discipline preserved). Also closed a Stage 1 gap: "Reason for
+selling"/"Times worn or used" were captured but never shown to buyers —
+now rendered on the listing detail page.
+
+**Schema/migration:** `20260808090000_category_restructure.sql`. Hit a
+real ordering trap applying it: categories are only ever created by
+`seed.sql`, which runs *last* on a local `db reset`, after every
+migration — so the migration's `UPDATE ... set browsable = true where
+slug = 'fashion'` ran before the row existed and was a silent no-op, then
+`seed.sql` re-inserted fashion fresh with its own stale `browsable =
+false`. Fixed by updating `seed.sql`'s own literal value too, with a
+comment explaining the trap for next time.
+
+**Verified live:** listed a real item in Beauty (group→subtype selector),
+a real item in Fashion (group→subtype→gender), confirmed the Men/Women
+category-page filter actually excludes the other gender's listings (not
+just filters generically), confirmed Fashion reappeared in the header nav
+with its new group tabs.
+
+Ended this stage at 183 tests, typecheck/lint/build clean.
+
+---
+
+## Design/UX pass — Stage 2.5: six refinement sub-stages
+
+A follow-up round of user-friendliness fixes to Stage 2's restructure,
+built and committed as six independently-verified sub-stages (2.5a–2.5f),
+each live-verified against the real app before moving to the next.
+
+**2.5a — jargon/removed-item cleanup.** Removed Beauty's "Size Unit"/"PAO"
+browse filters from category pages (confusing jargon most buyers don't
+understand — the fields still exist on the listing itself, just aren't
+filterable). Removed swimwear/underwear/socks entirely from Fashion's and
+Gym & Activewear's taxonomies — this marketplace doesn't resell used
+intimate/hygiene items. No existing listing used any of these values
+(checked against the live DB before removing), so nothing became
+unlistable.
+
+**2.5b — Fashion group restructure, part two.** "Traditional" (Nigerian
+traditional wear) promoted from a buried Other-subtype to its own
+top-level group with real subtypes: Ankara, Agbada, Aso-ebi, Buba,
+Kaftan. "Outerwear" removed as a group — jackets/coats became Tops
+subtypes. "Bottoms" renamed to "Trousers" (the group *key* renamed, not
+just the label). Migration `20260809090000` rewrites existing listings'
+stored `product_group` (`bottoms`→`trousers`, `outerwear`→`tops`, the old
+`other`/`traditional` pairing promoted with its subtype cleared) so
+nothing already published silently breaks — applied via
+`supabase migration up` against the live DB (not a reset) specifically so
+a real existing listing proved the migration, not just the schema change.
+
+**2.5c — Gym & Activewear merged into Fashion.** No longer a standalone
+top-level category — now Fashion's "Activewear" group, ranked 2nd (top-3
+prominence, per explicit instruction). Two subtype keys renamed to avoid
+colliding with existing Fashion subtypes (gym's `shorts`→`gym_shorts`,
+`jacket`→`track_jacket`; both still just labelled "Shorts"/"Track Jacket"
+to the user). Migration `20260809100000` reassigns every existing
+gym_activewear listing's `category_id` to fashion and reshapes its
+attributes, then deletes the now-empty category row (protected by
+`listings.category_id`'s FK — would fail loudly, not orphan data, if a row
+were ever missed). Hit a real, correct guardrail applying this: the
+`prevent_published_listing_core_field_changes` trigger (§7.1 — a
+*published* listing's category is immutable) blocked the migration's own
+UPDATE, because the one real test listing being migrated was published.
+Fixed by scoping a disable/enable of that one trigger around just this
+migration's statement — the seller-facing protection resumes immediately
+after.
+
+**2.5d — size required for clothing.** Size is now required
+(server-validated) for Tops, Dresses, Trousers, Sets, Activewear, and
+Traditional; not required for Bags, Accessories, Shoes, or Other. Known,
+accepted limitation: the sell form's generic field renderer still labels
+`size` as "(optional)" for every group (it derives required-ness purely
+from the Zod shape; the actual requirement is enforced via `superRefine`)
+— same limitation Gadgets' conditionally-required fields already had. The
+seller finds out via the server-side error message on submit.
+
+**2.5e — times-worn dropdown.** Replaced the free-text "Times worn or
+used" field with a fixed 3-option dropdown: "Never worn", "Worn a few
+times", "Worn often" — still optional. DB CHECK constraint
+(`listings_times_used_check`, migration `20260809110000`) added as
+defense-in-depth alongside the Zod enum.
+
+**2.5f — per-listing location.** Sellers can set an item's location
+(Nigerian state, reusing the existing `nigerianStateSchema` from
+profile/checkout, plus an optional free-text city) on the sell form.
+Defaults from the seller's own `profiles.state` when set — never forced,
+overridable per listing, resets to that same default (not the
+just-published listing's value) on "List another." New nullable
+`listings.location_state`/`location_city` columns (migration
+`20260809120000`). `ListingCard`'s existing seller-location meta-row field
+now prefers a listing's own location over the seller's profile default,
+falling back to the profile value for every listing that has none set —
+so nothing already published changed what it displays. Listing detail
+page shows the fuller "City, State" form.
+
+**Verified live, every sub-stage:** each was checked against the real
+running app, not just unit tests — publishing real listings through
+`/sell`, confirming category-page tabs/pills/filters, and in 2.5c
+specifically confirming a real published listing survived a
+cross-category, cross-attribute-shape migration end to end (category
+reassigned, `product_type` reshaped into `product_group`/`product_subtype`,
+now showing correctly under Fashion's Activewear tab).
+
+**Known, deliberately accepted gaps** (flagged inline in the schema files,
+not silently introduced): since `product_subtype` is optional by design, a
+seller can dodge the hygiene-sensitivity / no-used-for-underwear-swimwear-
+socks rules by picking only the group, never the specific subtype.
+
+Ended this stage at 186 tests, typecheck/lint/build clean throughout.
+
+**Environment note, worth flagging for whoever picks this up next:** a
+local `supabase db reset` wipes `profiles.is_admin` — it's deliberately
+never seeded (the only sanctioned way to grant it is
+`scripts/promote-admin.ts`, run manually, per Decision #80's
+privilege-escalation-bootstrap reasoning). It also wiped `auth.users`
+entirely once mid-pass; the admin account (`slinkiest@gmail.com` /
+`Demo1234!`) was recreated and re-promoted. If the "ADMIN" header link
+ever disappears after a reset, that's why — re-run
+`npm run admin:promote -- slinkiest@gmail.com`.
+
+**Next: Stage 3** — the richer ASOS-style visual treatment for category
+pages and nav (image tiles, not just the text tabs/pills Stage 2 built —
+those are functional, not yet the full visual pass), sign-in/sign-up page
+imagery, and home-page colour warmth, all drawing on the
+`public/images/marketing/` folder (9 real photos, copied in during Stage
+1, only partially used so far).
