@@ -1,15 +1,24 @@
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import {
   getCategoryBySlug,
   getCategoryListings,
+  getCategoryShowcase,
   getAttributeFilterDescriptors,
   type CategoryListingFilters,
 } from "@/lib/discovery/queries";
 import { categoryRegistry } from "@/lib/categories/registry";
 import { ListingCard } from "@/components/listing/listing-card";
+import { CategoryHero } from "@/components/category/category-hero";
 import { nairaToKobo } from "@/lib/money";
+import { isAllowedImageUrl } from "@/lib/images/allowed-hosts";
+import {
+  CATEGORY_MARKETING_IMAGE,
+  FASHION_GENDER_MARKETING_IMAGE,
+  SUBCATEGORY_GROUP_MARKETING_IMAGE,
+} from "@/lib/images/marketing";
 
 const CONDITION_LABELS: Record<string, string> = {
   brand_new: "Brand New",
@@ -99,10 +108,69 @@ export default async function CategoryPage({
 
   const { items, hasMore } = await getCategoryListings(supabase, category.id, filters, page);
 
+  // Design/UX pass Stage 3: the hero band's image, real photography first.
+  // A Fashion gender filter in effect overrides with that gender's own
+  // curated marketing image (a deliberate, tasteful nod to the active
+  // filter) rather than the category's generic fallback; this only ever
+  // fires for Fashion, since `selectedGender` is unset for every other
+  // category (no `gender` field exists in their schemas).
+  const [categoryShowcaseTile] = await getCategoryShowcase(supabase, [category]);
+  const categoryPhotoUrl = categoryShowcaseTile?.photoUrl ?? null;
+  const genderOverride =
+    selectedGender === "mens" || selectedGender === "womens" ? FASHION_GENDER_MARKETING_IMAGE[selectedGender] : undefined;
+  const heroImage =
+    genderOverride ??
+    (categoryPhotoUrl !== null && isAllowedImageUrl(categoryPhotoUrl) ? categoryPhotoUrl : undefined) ??
+    CATEGORY_MARKETING_IMAGE[category.slug] ??
+    null;
+
+  // Curated subtype showcase tiles — only the groups a real photo exists
+  // for (src/lib/images/marketing.ts), a bonus richer entry point alongside
+  // the plain-pill tabs below, which stay the complete, uniform filter
+  // mechanism for every group regardless of whether a photo exists.
+  const groupImages = SUBCATEGORY_GROUP_MARKETING_IMAGE[category.slug] ?? {};
+  const groupImageTiles = subcategoryGroups
+    ? Object.entries(subcategoryGroups).filter(([key]) => groupImages[key] !== undefined)
+    : [];
+
   return (
     <main className="flex flex-1 flex-col bg-u2c-canvas">
+      <CategoryHero displayName={category.displayName} imageSrc={heroImage} />
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-10 sm:px-6 lg:px-12">
-        <h1 className="font-display text-2xl font-medium text-u2c-ink">{category.displayName}</h1>
+        {/* Design/UX pass Stage 3: `flex gap-N`, never a fixed-width row with
+            a `bg-u2c-line` "hairline gap" trick — with only 2 or 3 tiles
+            (never enough to fill the row), that trick paints the container's
+            own background across all the unfilled trailing width, a stray
+            grey block (the exact same trap the homepage's showcase grid
+            already documents avoiding, src/app/(marketing)/page.tsx). Each
+            tile is self-contained instead. */}
+        {groupImageTiles.length > 0 ? (
+          <nav className="flex flex-wrap gap-3 overflow-x-auto" aria-label="Shop by subtype">
+            {groupImageTiles.map(([key, group]) => (
+              <a
+                key={key}
+                href={buildHref(slug, resolvedSearchParams, { attr_product_group: key, attr_product_subtype: undefined })}
+                className="group relative flex h-28 w-28 shrink-0 items-end overflow-hidden rounded-[var(--u2c-radius-card)] bg-u2c-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-u2c-focus sm:h-36 sm:w-36"
+              >
+                <Image
+                  src={groupImages[key] as string}
+                  alt=""
+                  fill
+                  sizes="144px"
+                  className="object-cover transition-transform duration-[220ms] ease-out group-hover:scale-[1.04] motion-reduce:group-hover:scale-100"
+                />
+                <div
+                  className="absolute inset-0"
+                  style={{ background: "linear-gradient(0deg, rgba(17,17,17,0.7) 0%, rgba(17,17,17,0) 55%)" }}
+                  aria-hidden
+                />
+                <span className="relative w-full p-2 text-[13px] font-bold uppercase tracking-[0.03em] text-white">
+                  {group.label}
+                </span>
+              </a>
+            ))}
+          </nav>
+        ) : null}
 
         {/* Group tabs (ASOS-style "Shop All" + each subcategory group).
             Registry-driven via subcategoryGroups — present for Beauty and
@@ -113,7 +181,7 @@ export default async function CategoryPage({
           <nav className="flex flex-wrap gap-2 border-b border-u2c-line pb-4">
             <a
               href={buildHref(slug, resolvedSearchParams, { attr_product_group: undefined, attr_product_subtype: undefined })}
-              className={`rounded-full px-4 py-1.5 text-[13px] font-bold uppercase tracking-[0.03em] transition-colors duration-150 ${
+              className={`rounded-full px-4 py-1.5 text-[13px] font-bold uppercase tracking-[0.03em] transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-u2c-focus ${
                 !selectedGroup ? "bg-u2c-ink text-white" : "bg-u2c-tile text-u2c-ink hover:bg-u2c-line"
               }`}
             >
@@ -123,7 +191,7 @@ export default async function CategoryPage({
               <a
                 key={key}
                 href={buildHref(slug, resolvedSearchParams, { attr_product_group: key, attr_product_subtype: undefined })}
-                className={`rounded-full px-4 py-1.5 text-[13px] font-bold uppercase tracking-[0.03em] transition-colors duration-150 ${
+                className={`rounded-full px-4 py-1.5 text-[13px] font-bold uppercase tracking-[0.03em] transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-u2c-focus ${
                   selectedGroup === key ? "bg-u2c-ink text-white" : "bg-u2c-tile text-u2c-ink hover:bg-u2c-line"
                 }`}
               >
@@ -138,7 +206,7 @@ export default async function CategoryPage({
           <nav className="-mt-4 flex flex-wrap gap-2">
             <a
               href={buildHref(slug, resolvedSearchParams, { attr_product_subtype: undefined })}
-              className={`rounded-[var(--u2c-radius-control)] border px-3 py-1 text-[13px] transition-colors duration-150 ${
+              className={`rounded-[var(--u2c-radius-control)] border px-3 py-1 text-[13px] transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-u2c-focus ${
                 !selectedSubtype ? "border-u2c-ink text-u2c-ink" : "border-u2c-line text-u2c-ink-soft hover:border-u2c-ink"
               }`}
             >
@@ -148,7 +216,7 @@ export default async function CategoryPage({
               <a
                 key={key}
                 href={buildHref(slug, resolvedSearchParams, { attr_product_subtype: key })}
-                className={`rounded-[var(--u2c-radius-control)] border px-3 py-1 text-[13px] transition-colors duration-150 ${
+                className={`rounded-[var(--u2c-radius-control)] border px-3 py-1 text-[13px] transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-u2c-focus ${
                   selectedSubtype === key ? "border-u2c-ink text-u2c-ink" : "border-u2c-line text-u2c-ink-soft hover:border-u2c-ink"
                 }`}
               >
@@ -160,23 +228,34 @@ export default async function CategoryPage({
 
         {/* Gender filter — Men/Women, exact-match only (never leaks a
             womens-tagged listing into a "Men" filter or vice versa;
-            unisex/kids items show under "All" only, not under either). */}
+            unisex/kids items show under "All" only, not under either).
+            Design/UX pass Stage 3: each option carries a small avatar
+            thumbnail (the same curated Fashion marketing photography the
+            hero band swaps to on selection), a tasteful richer treatment
+            for a filter this app only has for one category today. */}
         {genderDescriptor ? (
           <nav className="flex gap-2">
-            {[
-              { key: undefined, label: "All" },
-              { key: "womens", label: "Women" },
-              { key: "mens", label: "Men" },
-            ].map((option) => (
+            {(
+              [
+                { key: undefined, label: "All", avatar: undefined },
+                { key: "womens" as const, label: "Women", avatar: FASHION_GENDER_MARKETING_IMAGE.womens },
+                { key: "mens" as const, label: "Men", avatar: FASHION_GENDER_MARKETING_IMAGE.mens },
+              ]
+            ).map((option) => (
               <a
                 key={option.label}
                 href={buildHref(slug, resolvedSearchParams, { attr_gender: option.key })}
-                className={`rounded-[var(--u2c-radius-control)] px-4 py-1.5 text-[13px] font-semibold transition-colors duration-150 ${
+                className={`flex items-center gap-2 rounded-[var(--u2c-radius-control)] py-1.5 pl-1.5 pr-4 text-[13px] font-semibold transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-u2c-focus ${
                   (selectedGender ?? undefined) === option.key
                     ? "bg-u2c-primary text-white"
                     : "border border-u2c-line text-u2c-ink hover:border-u2c-ink"
                 }`}
               >
+                {option.avatar ? (
+                  <span className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full">
+                    <Image src={option.avatar} alt="" fill sizes="24px" className="object-cover" />
+                  </span>
+                ) : null}
                 {option.label}
               </a>
             ))}

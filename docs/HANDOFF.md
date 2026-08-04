@@ -1570,3 +1570,90 @@ those are functional, not yet the full visual pass), sign-in/sign-up page
 imagery, and home-page colour warmth, all drawing on the
 `public/images/marketing/` folder (9 real photos, copied in during Stage
 1, only partially used so far).
+
+---
+
+## Design/UX pass — Stage 3a: nav + category pages
+
+First reviewable chunk of Stage 3, per explicit instruction to ship nav and
+category pages before moving to auth imagery and home warmth. Worked from a
+real ASOS reference (screenshots of asos.com, supplied by the founder) and
+the 9 curated images in `public/images/marketing/`.
+
+**A real, deliberate exception opened in the urs2cash-ui skill, not a
+drift.** The skill's non-negotiable #2 ("real photography only") previously
+had no carve-out for a category with zero published listings — its own
+prescribed fallback was a flat solid-colour field. The founder explicitly
+directed marketing imagery be used for category tiles/hero/nav fallback and
+the auth split-screen. Resolved by narrowing, not removing, the rule: real
+photography stays mandatory on every PRODUCT surface (cards, galleries) —
+the exception is scoped to hero/nav/showcase-tile fallback and purely
+decorative, never-product-photography contexts only. New module
+`src/lib/images/marketing.ts` is the single place the nine images are
+mapped to their use (`CATEGORY_MARKETING_IMAGE`,
+`FASHION_GENDER_MARKETING_IMAGE`, `SUBCATEGORY_GROUP_MARKETING_IMAGE`,
+`AUTH_MARKETING_IMAGE`) — never referenced by a bare path anywhere else.
+Skill file updated in the same commit (Header, Category showcase tile, new
+Category hero band section) so this isn't a silent divergence between what
+shipped and what the skill documents.
+
+**Completed:**
+- `src/components/site-header.tsx`: the plain-text category tab row
+  replaced with an image-chip treatment — each browsable category link now
+  carries a 36px circular photo thumbnail (that category's own most recent
+  published listing photo, marketing fallback otherwise) before the bold
+  uppercase label. Reuses the existing `getCategoryShowcase` query (already
+  built for the homepage tiles) rather than a new one.
+- `src/app/(marketing)/page.tsx`: `CategoryTile`'s no-photo state now falls
+  back to the category's curated marketing image instead of a bare
+  `ImageOff` icon, so "Shop by category" never looks half-built on a fresh
+  environment. Real published-listing photography still wins whenever one
+  exists — the fallback only ever fires for an empty category.
+- New `src/components/category/category-hero.tsx`: a full-bleed hero band
+  for `/c/[slug]`, matching the home hero's own treatment (black gradient
+  scrim, white Archivo 900 category name) so the two surfaces read as one
+  system instead of a rich home page bolted onto bare category tabs.
+- `src/app/(shop)/c/[slug]/page.tsx`: wired the hero band in (real recent
+  category photo first, marketing fallback second); added a curated
+  subtype showcase-tile strip above the existing group-tab pills, shown
+  only for groups a real photo exists for (currently Beauty's Face/Lips/
+  Eyes via `powder.jpg`/`lip-category.jpg`/`mascara-category.jpg`) — the
+  plain pills stay the complete, uniform filter mechanism for every group
+  regardless of photo coverage, so nothing about the actual filtering
+  became inconsistent; the tiles are a bonus richer entry point only.
+  Fashion's Men/Women gender filter pills gained small circular avatar
+  thumbnails (`male-fashion.jpg`/`fashion.jpg`), and — a deliberate, tasteful
+  touch — the hero band itself swaps to that gender's own marketing image
+  while the filter is active, live-verified (`/c/fashion?attr_gender=mens`
+  shows the male-fashion hero). Also added `focus-visible` outlines to the
+  group tabs, subtype pills, and gender filter (a real, if incidental,
+  accessibility gap in the pre-existing pill markup).
+- Caught and fixed one real layout bug before shipping, not after: the
+  subtype showcase-tile row's first draft used the same "hairline gap via
+  container background colour" trick the homepage's own showcase grid
+  already documents avoiding (`docs/DECISIONS.md`, Prompt 10-era comment in
+  `page.tsx`) — with only 2-3 tiles never filling the row's full width, the
+  `bg-u2c-line` container paint showed through as a stray grey block past
+  the last tile. Fixed the same way the homepage already does: each tile is
+  self-contained (`gap-3`, `rounded-[var(--u2c-radius-card)]`, its own
+  background), no shared container fill.
+
+**Verified live, not just built:** dev server had a genuinely stale,
+unresponsive `next dev` process left over from an earlier session (PID
+58436, hung — accepted TCP connections but never responded; its lockfile
+blocked a fresh server from starting even on a fallback port). Killed it
+and started clean rather than working around it. Screenshotted the
+homepage, `/c/beauty`, `/c/fashion`, and `/c/fashion?attr_gender=mens` at
+both desktop (1280px) and mobile (390px) viewports via gstack's `browse`
+tool. Confirmed: nav thumbnails render real listing photos where they
+exist; category tiles and hero bands render real photography (this
+environment's seed data turned out to have real, loadable listing photos,
+not the placeholder-URL gap earlier QA sessions found — network log showed
+real 200s with real byte counts); the Fashion hero visibly swaps on the
+gender filter; the subtype tile row no longer paints a stray grey block;
+mobile layout wraps the nav, hero, tiles, and pills without overflow.
+`npx tsc --noEmit`, `npx eslint "src/**/*.{ts,tsx}"`, `npx vitest run`
+(186/186, unchanged — pure UI work), and `npm run build` all clean.
+
+**Next within Stage 3:** sign-in/sign-up split-screen imagery, then
+home-page colour warmth (header/footer/value-prop tiles).

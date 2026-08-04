@@ -1,10 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ShieldCheck, FileCheck2, Star, MapPin, ImageOff } from "lucide-react";
+import { ShieldCheck, FileCheck2, Star, MapPin } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBrowsableCategories, getCategoryShowcase, getRecentlyListed } from "@/lib/discovery/queries";
 import { ListingCard } from "@/components/listing/listing-card";
 import { isAllowedImageUrl, isPrivateIpImageUrl } from "@/lib/images/allowed-hosts";
+import { CATEGORY_MARKETING_IMAGE } from "@/lib/images/marketing";
 
 /**
  * urs2cash-ui skill, Value-prop tiles spec (Revision 4): fixed copy, never
@@ -178,20 +179,27 @@ function CategoryTile({
 }: {
   category: { slug: string; displayName: string; photoUrl: string | null };
 }) {
-  const showPhoto = category.photoUrl !== null && isAllowedImageUrl(category.photoUrl);
+  // Design/UX pass Stage 3: a real published listing photo wins where one
+  // exists; a category with nothing published yet falls back to its
+  // curated marketing image (src/lib/images/marketing.ts) rather than a
+  // bare icon, so the showcase never looks half-built to a first visitor.
+  const isCategorySlug = (value: string): value is keyof typeof CATEGORY_MARKETING_IMAGE =>
+    value in CATEGORY_MARKETING_IMAGE;
+  const fallbackImage = isCategorySlug(category.slug) ? CATEGORY_MARKETING_IMAGE[category.slug] : undefined;
+  const imageSrc = category.photoUrl !== null && isAllowedImageUrl(category.photoUrl) ? category.photoUrl : fallbackImage;
 
   return (
     <Link
       href={`/c/${category.slug}`}
       className="group relative flex aspect-[4/5] w-1/2 items-end overflow-hidden border border-u2c-line bg-u2c-ink lg:w-1/4"
     >
-      {showPhoto ? (
+      {imageSrc ? (
         <>
           <Image
-            src={category.photoUrl as string}
+            src={imageSrc}
             alt=""
             fill
-            unoptimized={isPrivateIpImageUrl(category.photoUrl as string)}
+            unoptimized={isPrivateIpImageUrl(imageSrc)}
             sizes="(max-width: 640px) 50vw, 25vw"
             className="object-cover transition-transform duration-[380ms] ease-out group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
           />
@@ -201,14 +209,7 @@ function CategoryTile({
             aria-hidden
           />
         </>
-      ) : (
-        <ImageOff
-          size={28}
-          strokeWidth={1.5}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white/40"
-          aria-hidden
-        />
-      )}
+      ) : null}
       <span className="font-display relative p-4 text-lg font-extrabold text-white sm:text-xl">
         {category.displayName}
       </span>
