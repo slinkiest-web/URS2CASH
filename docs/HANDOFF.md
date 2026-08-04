@@ -1712,3 +1712,70 @@ wiring, form field `name` attributes, or hidden `redirectTo` field.
 
 **Next within Stage 3:** home-page colour warmth (header/footer/value-prop
 tiles) — the last piece of this stage.
+
+---
+
+## Design/UX pass — Stage 3c: home-page colour warmth
+
+Last piece of Stage 3. Explicit founder direction: the header, footer, and
+value-prop tiles read too stark black-and-white, warm them up with the
+burgundy/complementary palette.
+
+**A real, deliberate tension with the existing skill, resolved by
+narrowing scope rather than ignoring either side.** Revision 4's own
+non-negotiable #4 ("burgundy is sparing... never a filled background") and
+the value-prop tile spec ("never a colourful block, that would break the
+sparing-accent rule") both argue against adding colour here. Resolved by
+distinguishing a saturated fill (still off-limits everywhere) from a quiet
+wash/gradient (what actually shipped): the header and footer get a
+barely-there gradient from a near-black warm maroon
+(`--u2c-ink-warm-start`, `#1c1114`) into the existing `--u2c-ink`, and the
+four value-prop tiles each get their own quiet warm tint
+(`--u2c-warm-blush`/`-sand`/`-rose`/`-cream`, all within a few points of
+the existing neutral `--u2c-tile`) instead of one flat grey repeated four
+times. None of these are saturated burgundy, none compete with product
+photography or price text, and no button gained a second filled burgundy
+state anywhere. New tokens added to `src/app/globals.css` (both the
+`:root` custom properties and their `@theme inline` Tailwind mappings, same
+pattern every existing `--u2c-*` token follows) rather than inlined as raw
+hex, so future surfaces can reuse them by name.
+
+**Completed:**
+- `src/app/globals.css`: five new tokens (`--u2c-ink-warm-start` plus the
+  four `--u2c-warm-*` tile tints), registered in `@theme inline` so
+  `bg-u2c-warm-blush` etc. work as real Tailwind classes.
+- `src/components/site-header.tsx`: the main bar's flat `bg-u2c-ink` fill
+  replaced with an inline `linear-gradient(115deg, var(--u2c-ink-warm-start)
+  0%, var(--u2c-ink) 60%)` — matches the inline-gradient pattern every hero/
+  tile scrim in this codebase already uses, rather than a new component
+  convention. The white category bar underneath is untouched (adding warmth
+  there would fight the new photo thumbnails' own legibility).
+- `src/components/site-footer.tsx`: the identical gradient, so the two dark
+  bookends of every page read as one register instead of two separately
+  toned blacks.
+- `src/app/(marketing)/page.tsx`: `VALUE_PROPS` now carries a `tint` per
+  entry, applied via inline `backgroundColor` (each tile keeps its own flat
+  fill, still zero shadow, still left-aligned — only the fill colour
+  changed); icon size bumped 20px to 22px ("better icons," per the
+  instruction) while staying plain, never inside a coloured circle (still
+  explicitly off-limits per non-negotiable #10 — the "life" comes from the
+  tile tint and slightly larger icon, not a new AI-slop icon treatment).
+
+**Verified live:** screenshotted the homepage at desktop and mobile after
+the change; cropped a close-up of the header bar specifically to confirm
+the gradient is perceptible at normal viewing distance, not so subtle it
+reads as a flat colour (it does read as a warm tinge fading into black,
+confirmed by eye against the crop, not just by reading the CSS value).
+Confirmed via `getComputedStyle` in a live browser session that the
+gradient is genuinely applied (`linear-gradient(115deg, rgb(28, 17, 20)
+0%, rgb(17, 17, 17) 60%)`), not just present in source and silently
+overridden by something else. `npx tsc --noEmit`, `npx eslint
+"src/**/*.{ts,tsx}"`, `npx vitest run` (186/186, unchanged — no logic
+touched this stage), and `npm run build` all clean.
+
+**Stage 3 complete.** All four items shipped and committed individually:
+3a (nav + category pages), 3b (auth imagery), 3c (home warmth) — item 5
+("humanize throughout": warm microcopy, real lucide icons, consistent
+spacing, hover states, empty/loading states) was addressed incrementally
+within each of 3a/3b/3c as each surface was touched, rather than as a
+separate fourth pass, since it was never a distinct surface of its own.

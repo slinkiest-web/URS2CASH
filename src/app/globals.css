@@ -28,6 +28,23 @@
   --u2c-focus: #6b1f2a;
   --u2c-error: #a13d2b;
 
+  /*
+   * Design/UX pass Stage 3c (2026-08-04): a warmth pass on the header,
+   * footer, and value-prop tiles, per explicit founder direction that the
+   * black/white/burgundy register reads too stark. These are washes and a
+   * near-black-to-near-burgundy gradient, not saturated fills — burgundy
+   * stays out of any large solid area, which is the substance of "sparing"
+   * (never competing with product photography or the price), even though
+   * the letter of Revision 4's "one filled burgundy CTA" line is about
+   * buttons specifically, not tints this quiet. See docs/HANDOFF.md's
+   * Stage 3c entry and the urs2cash-ui skill's own updated sections.
+   */
+  --u2c-ink-warm-start: #1c1114;
+  --u2c-warm-blush: #f5e7e4;
+  --u2c-warm-sand: #f3ede0;
+  --u2c-warm-rose: #f0e6e6;
+  --u2c-warm-cream: #f6f0e6;
+
   --u2c-radius-card: 6px;
   --u2c-radius-control: 4px;
   --u2c-shadow-hover: 0 12px 24px rgba(17, 17, 17, 0.12);
@@ -49,6 +66,10 @@
   --color-u2c-primary-press: var(--u2c-primary-press);
   --color-u2c-focus: var(--u2c-focus);
   --color-u2c-error: var(--u2c-error);
+  --color-u2c-warm-blush: var(--u2c-warm-blush);
+  --color-u2c-warm-sand: var(--u2c-warm-sand);
+  --color-u2c-warm-rose: var(--u2c-warm-rose);
+  --color-u2c-warm-cream: var(--u2c-warm-cream);
   --font-display: var(--font-archivo);
   --font-body: var(--font-inter);
   --color-background: var(--background);

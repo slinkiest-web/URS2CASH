@@ -55,7 +55,12 @@ export async function SiteHeader() {
 
   return (
     <header>
-      <div className="bg-u2c-ink">
+      {/* Design/UX pass Stage 3c: a barely-there warm gradient (near-black
+          toward a deep burgundy-black) replaces the flat --u2c-ink fill,
+          per explicit direction to warm up the header without abandoning
+          its high-contrast register — no burgundy reaches a saturated
+          value anywhere in the blend. */}
+      <div style={{ background: "linear-gradient(115deg, var(--u2c-ink-warm-start) 0%, var(--u2c-ink) 60%)" }}>
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-6 sm:px-6 lg:px-12">
           <Link href="/" className="font-display shrink-0 text-xl font-extrabold tracking-tight text-white">
             Urs2Cash

@@ -14,7 +14,13 @@ export function SiteFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="mt-auto bg-u2c-ink text-white">
+    // Design/UX pass Stage 3c: same warm gradient as the header, so the
+    // two dark bookends of every page read as one deliberate register
+    // rather than two separately-toned blacks.
+    <footer
+      className="mt-auto text-white"
+      style={{ background: "linear-gradient(115deg, var(--u2c-ink-warm-start) 0%, var(--u2c-ink) 60%)" }}
+    >
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 border-b border-white/10 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-12">
         <div className="flex flex-col gap-1">
           <span className="text-[13px] font-bold uppercase tracking-[0.06em] text-white/70">

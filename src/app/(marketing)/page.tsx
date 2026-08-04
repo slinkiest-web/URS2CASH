@@ -8,15 +8,18 @@ import { isAllowedImageUrl, isPrivateIpImageUrl } from "@/lib/images/allowed-hos
 import { CATEGORY_MARKETING_IMAGE } from "@/lib/images/marketing";
 
 /**
- * urs2cash-ui skill, Value-prop tiles spec (Revision 4): fixed copy, never
- * genericised, never the word "escrow". Icons are plain, never inside a
- * coloured circle.
+ * urs2cash-ui skill, Value-prop tiles spec (Revision 4, warmed in Stage
+ * 3c): fixed copy, never genericised, never the word "escrow". Icons stay
+ * plain, never inside a coloured circle (that AI-slop pattern is still
+ * off-limits) — the "more life" the founder asked for comes from each
+ * tile carrying its own quiet warm tint instead of one flat neutral fill
+ * repeated four times, and a slightly larger icon.
  */
 const VALUE_PROPS = [
-  { icon: ShieldCheck, text: "Your money is safe until you get your item" },
-  { icon: FileCheck2, text: "Honest condition on every listing" },
-  { icon: Star, text: "Trusted sellers, rated by real buyers" },
-  { icon: MapPin, text: "Buy and sell across Nigeria" },
+  { icon: ShieldCheck, text: "Your money is safe until you get your item", tint: "var(--u2c-warm-blush)" },
+  { icon: FileCheck2, text: "Honest condition on every listing", tint: "var(--u2c-warm-sand)" },
+  { icon: Star, text: "Trusted sellers, rated by real buyers", tint: "var(--u2c-warm-rose)" },
+  { icon: MapPin, text: "Buy and sell across Nigeria", tint: "var(--u2c-warm-cream)" },
 ] as const;
 
 /**
@@ -50,9 +53,9 @@ export default async function HomePage() {
 
       <section className="border-b border-u2c-line">
         <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-px bg-u2c-line sm:grid-cols-2 lg:grid-cols-4">
-          {VALUE_PROPS.map(({ icon: Icon, text }) => (
-            <div key={text} className="flex flex-col gap-3 bg-u2c-tile p-6">
-              <Icon size={20} strokeWidth={1.75} className="text-u2c-primary" aria-hidden />
+          {VALUE_PROPS.map(({ icon: Icon, text, tint }) => (
+            <div key={text} className="flex flex-col gap-3 p-6" style={{ backgroundColor: tint }}>
+              <Icon size={22} strokeWidth={1.75} className="text-u2c-primary" aria-hidden />
               <p className="text-[15px] font-bold leading-snug text-u2c-ink">{text}</p>
             </div>
           ))}
